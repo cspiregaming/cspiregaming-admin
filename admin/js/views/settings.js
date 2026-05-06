@@ -45,16 +45,10 @@ export async function renderSettings(container) {
         <div class="form-group">
           <label>Admin Role ID</label>
           <input name="admin_role_id" value="${escHtml(config.admin_role_id || '')}" placeholder="Role ID required to access this admin panel">
+          <small style="color:var(--text-muted)">
+            Members of the guild with this role can sign in. Leave blank to allow any guild member (not recommended).
+          </small>
         </div>
-        <div class="form-group">
-          <label>Discord OAuth Client ID</label>
-          <input name="discord_client_id" value="${escHtml(config.discord_client_id || '')}" placeholder="From your Discord application at discord.com/developers">
-        </div>
-        <p style="color:var(--text-muted);font-size:12px;margin-bottom:16px">
-          The OAuth client secret must be set via <code>wrangler secret put DISCORD_CLIENT_SECRET</code>.
-          Redirect URI to register in your Discord app:
-          <code id="redirect-uri-display">https://&lt;your-worker-url&gt;/api/auth/callback</code>
-        </p>
         <button type="submit" class="btn btn-primary">Save Settings</button>
         <div id="settings-feedback" style="margin-top:12px"></div>
       </form>
@@ -77,7 +71,6 @@ export async function renderSettings(container) {
       await api.putConfig({
         guild_id: fd.get('guild_id'),
         admin_role_id: fd.get('admin_role_id'),
-        discord_client_id: fd.get('discord_client_id'),
       });
       feedback.innerHTML = '<div class="alert alert-success">✓ Settings saved.</div>';
     } catch (err) {
