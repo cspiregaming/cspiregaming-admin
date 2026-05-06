@@ -1,0 +1,16 @@
+# Dependencies
+node_modules/
+
+# Wrangler local state
+.wrangler/
+
+# Environment / secrets
+.dev.vars
+.env
+.env.local
+
+# OS / editor
+.DS_Store
+*.swp
+.idea/
+.vscode/

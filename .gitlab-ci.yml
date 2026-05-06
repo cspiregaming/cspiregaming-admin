@@ -1,0 +1,33 @@
+stages:
+  - deploy
+
+# Deploy Cloudflare Worker
+deploy-worker:
+  stage: deploy
+  image: node:20-alpine
+  script:
+    - cd worker
+    - npm ci
+    - npx wrangler deploy
+  environment:
+    name: production
+    url: https://cspiregaming-api.michaellamb.workers.dev
+  only:
+    - main
+  # Required CI/CD variables (set in GitLab project settings, not committed):
+  #   CLOUDFLARE_API_TOKEN  - Cloudflare API token with Workers:Edit permission
+  #   CLOUDFLARE_ACCOUNT_ID - Your Cloudflare account ID
+
+# Deploy Admin page to GitLab Pages (served at cspiregaming.csgitpages.cspire.net)
+pages:
+  stage: deploy
+  script:
+    - cp -r admin public
+  artifacts:
+    paths:
+      - public
+  only:
+    - main
+  environment:
+    name: admin-page
+    url: https://cspiregaming.csgitpages.cspire.net
