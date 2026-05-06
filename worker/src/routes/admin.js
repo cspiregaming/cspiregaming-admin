@@ -16,11 +16,12 @@ export async function handleAuthCallback(request, env) {
   const code = url.searchParams.get('code');
   const error = url.searchParams.get('error');
 
-  const origin = getOrigin(request);
-  const redirectUri = `${origin}/api/auth/callback`;
+  const workerOrigin = getOrigin(request);
+  const redirectUri = `${workerOrigin}/api/auth/callback`;
+  const adminUrl = (env.ADMIN_URL || '').replace(/\/$/, '');
 
   if (error || !code) {
-    return Response.redirect(`${origin}/admin/?error=oauth_denied`, 302);
+    return Response.redirect(`${adminUrl}/?error=oauth_denied`, 302);
   }
 
   const { user, member } = await discordOAuthExchange(env, code, redirectUri);
@@ -28,7 +29,7 @@ export async function handleAuthCallback(request, env) {
   // Verify user has the configured admin role
   const adminRoleId = await env.CONFIG.get('admin_role_id');
   if (adminRoleId && !member.roles.includes(adminRoleId)) {
-    return Response.redirect(`${origin}/admin/?error=not_authorized`, 302);
+    return Response.redirect(`${adminUrl}/?error=not_authorized`, 302);
   }
 
   const secret = env.JWT_SECRET;
@@ -43,13 +44,12 @@ export async function handleAuthCallback(request, env) {
   };
 
   const token = await signJwt(payload, secret);
-  const adminUrl = `${origin}/admin/`;
 
   return new Response(null, {
     status: 302,
     headers: {
-      Location: adminUrl,
-      'Set-Cookie': `admin_token=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${86400 * 7}`,
+      Location: `${adminUrl}/`,
+      'Set-Cookie': `admin_token=${token}; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=${86400 * 7}`,
     },
   });
 }
@@ -59,7 +59,7 @@ export async function handleAuthLogout(request, env) {
     status: 200,
     headers: {
       'Content-Type': 'application/json',
-      'Set-Cookie': 'admin_token=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0',
+      'Set-Cookie': 'admin_token=; Path=/; HttpOnly; Secure; SameSite=None; Max-Age=0',
     },
   });
 }
