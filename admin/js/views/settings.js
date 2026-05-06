@@ -32,26 +32,10 @@ export async function renderSettings(container) {
           ${!config.jwt_secret_set ? '<span style="color:var(--text-muted);font-size:12px">Run <code>wrangler secret put JWT_SECRET</code> with a random string</span>' : ''}
         </div>
       </div>
-    </div>
-
-    <div class="card">
-      <form id="settings-form">
-        <h2 style="margin-bottom:16px">Guild & OAuth Configuration</h2>
-        <div class="form-group">
-          <label>Discord Guild ID</label>
-          <input name="guild_id" value="${escHtml(config.guild_id || '379707231077138442')}" placeholder="379707231077138442">
-          <small style="color:var(--text-muted)">Right-click your Discord server icon → Copy Server ID (Developer Mode must be on)</small>
-        </div>
-        <div class="form-group">
-          <label>Admin Role ID</label>
-          <input name="admin_role_id" value="${escHtml(config.admin_role_id || '')}" placeholder="Role ID required to access this admin panel">
-          <small style="color:var(--text-muted)">
-            Members of the guild with this role can sign in. Leave blank to allow any guild member (not recommended).
-          </small>
-        </div>
-        <button type="submit" class="btn btn-primary">Save Settings</button>
-        <div id="settings-feedback" style="margin-top:12px"></div>
-      </form>
+      <p style="color:var(--text-muted);font-size:12px;margin-top:8px">
+        Guild ID and Admin Role ID are managed in <code>worker/wrangler.toml</code> by developers.
+        Current guild: <code>${escHtml(config.guild_id || '')}</code>
+      </p>
     </div>
 
     <div class="card" style="margin-top:0">
@@ -59,27 +43,6 @@ export async function renderSettings(container) {
       <button class="btn btn-outline" id="btn-logout">Sign Out</button>
     </div>
   `;
-
-  document.getElementById('settings-form')?.addEventListener('submit', async e => {
-    e.preventDefault();
-    const fd = new FormData(e.target);
-    const btn = e.target.querySelector('[type=submit]');
-    const feedback = document.getElementById('settings-feedback');
-    btn.disabled = true;
-    btn.textContent = 'Saving...';
-    try {
-      await api.putConfig({
-        guild_id: fd.get('guild_id'),
-        admin_role_id: fd.get('admin_role_id'),
-      });
-      feedback.innerHTML = '<div class="alert alert-success">✓ Settings saved.</div>';
-    } catch (err) {
-      feedback.innerHTML = `<div class="alert alert-error">${escHtml(err.message)}</div>`;
-    } finally {
-      btn.disabled = false;
-      btn.textContent = 'Save Settings';
-    }
-  });
 
   document.getElementById('btn-logout')?.addEventListener('click', async () => {
     await api.logout().catch(() => {});

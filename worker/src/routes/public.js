@@ -3,7 +3,7 @@ import { fetchGuildMembers } from '../discord.js';
 const MEMBERS_CACHE_TTL = 300; // 5 minutes
 
 export async function handlePublicMembers(request, env) {
-  const guildId = (await env.CONFIG.get('guild_id')) || env.GUILD_ID || '379707231077138442';
+  const guildId = env.GUILD_ID;
 
   // Load configured role IDs from KV (set via admin UI)
   const roleIdsRaw = await env.CONFIG.get('role_ids');

@@ -3,9 +3,12 @@ main = "src/index.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-# Default vars (non-secret config overridable via KV at runtime)
+# Non-secret config. Edit + redeploy to change.
 [vars]
 GUILD_ID = "379707231077138442"
+# Discord role required to sign in to the admin console. Empty = any guild
+# member can sign in (NOT recommended).
+ADMIN_ROLE_ID = "961330657114607646"
 ENVIRONMENT = "production"
 # URL of the deployed admin SPA. Used as the post-OAuth redirect target so
 # users land on the admin page (not the worker origin) after sign-in.

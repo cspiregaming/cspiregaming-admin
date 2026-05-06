@@ -27,7 +27,7 @@ export async function handleAuthCallback(request, env) {
   const { user, member } = await discordOAuthExchange(env, code, redirectUri);
 
   // Verify user has the configured admin role
-  const adminRoleId = await env.CONFIG.get('admin_role_id');
+  const adminRoleId = env.ADMIN_ROLE_ID;
   if (adminRoleId && !member.roles.includes(adminRoleId)) {
     return Response.redirect(`${adminUrl}/?error=not_authorized`, 302);
   }
@@ -70,17 +70,10 @@ export async function handleAdminConfig(request, env) {
   const session = await requireAuth(request, env);
 
   if (request.method === 'GET') {
-    const [guildId, adminRoleId, roleIds, discordClientId] = await Promise.all([
-      env.CONFIG.get('guild_id'),
-      env.CONFIG.get('admin_role_id'),
-      env.CONFIG.get('role_ids'),
-      env.CONFIG.get('discord_oauth_client_id'),
-    ]);
+    const roleIds = await env.CONFIG.get('role_ids');
     return jsonResponse({
-      guild_id: guildId || env.GUILD_ID || '379707231077138442',
-      admin_role_id: adminRoleId || '',
+      guild_id: env.GUILD_ID,
       role_ids: roleIds ? JSON.parse(roleIds) : [],
-      discord_client_id: discordClientId || '',
       bot_token_set: !!(env.BOT_TOKEN),
       jwt_secret_set: !!(env.JWT_SECRET),
     });
@@ -88,19 +81,10 @@ export async function handleAdminConfig(request, env) {
 
   if (request.method === 'PUT') {
     const body = await request.json();
-    const writes = [];
-
-    if (body.guild_id != null) writes.push(env.CONFIG.put('guild_id', body.guild_id));
-    if (body.admin_role_id != null) writes.push(env.CONFIG.put('admin_role_id', body.admin_role_id));
-    if (body.role_ids != null) writes.push(env.CONFIG.put('role_ids', JSON.stringify(body.role_ids)));
-    if (body.discord_client_id != null) writes.push(env.CONFIG.put('discord_oauth_client_id', body.discord_client_id));
-
-    await Promise.all(writes);
-
-    // Invalidate members cache when config changes
-    const guildId = body.guild_id || await env.CONFIG.get('guild_id') || env.GUILD_ID;
-    await env.CACHE.delete(`members_${guildId}`);
-
+    if (body.role_ids != null) {
+      await env.CONFIG.put('role_ids', JSON.stringify(body.role_ids));
+      await env.CACHE.delete(`members_${env.GUILD_ID}`);
+    }
     return jsonResponse({ ok: true });
   }
 
@@ -113,7 +97,7 @@ export async function handleAdminRoles(request, env) {
   const botToken = env.BOT_TOKEN;
   if (!botToken) return jsonResponse({ error: 'BOT_TOKEN not configured' }, 500);
 
-  const guildId = (await env.CONFIG.get('guild_id')) || env.GUILD_ID || '379707231077138442';
+  const guildId = env.GUILD_ID;
 
   const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, {
     headers: { Authorization: `Bot ${botToken}` },
@@ -142,7 +126,7 @@ export async function handleAdminMembers(request, env) {
   const session = await requireAuth(request, env);
   const url = new URL(request.url);
 
-  const guildId = (await env.CONFIG.get('guild_id')) || env.GUILD_ID || '379707231077138442';
+  const guildId = env.GUILD_ID;
   const roleIdsRaw = await env.CONFIG.get('role_ids');
   const roleIds = roleIdsRaw ? JSON.parse(roleIdsRaw) : [];
 

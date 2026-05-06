@@ -46,10 +46,10 @@ If sign-in fails:
 
 ### Granting officer access to someone
 
-1. In Discord, give them the role configured as **Admin Role ID** in Settings.
+1. In Discord, give them the role configured as `ADMIN_ROLE_ID` in `worker/wrangler.toml`.
 2. They sign in via the admin link above.
 
-If the Admin Role ID is left blank in Settings, *any guild member* can sign in. **Don't leave it blank.**
+The role gate is set in `wrangler.toml` (developer access required to change). If you need a different role to gate the admin, ask a developer to update and redeploy.
 
 ### What each section does
 
@@ -59,7 +59,7 @@ If the Admin Role ID is left blank in Settings, *any guild member* can sign in. 
 - **Officers** — manually-curated officer cards (name, photo URL, bio HTML, display order). Used by the public site's "Officers" section.
 - **Events** — manually-curated event cards (title, subtitle, description HTML, action button, optional Google Maps embed and cover image).
 - **Social Links** — Discord, Twitch, Facebook, Instagram, Twitter/X, Subscribe, Outlook group, Status page URLs.
-- **Settings** — Guild ID, Admin Role ID, status of the bot/JWT secrets (managed via `wrangler secret`). Also has a **Sign Out** button.
+- **Settings** — read-only view of bot/JWT secret status and the current guild. Guild ID and Admin Role ID are managed in `worker/wrangler.toml` by developers. Also has a **Sign Out** button.
 
 ### Common operational tasks
 
@@ -110,9 +110,7 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 
 | Binding | Key | Value |
 | --- | --- | --- |
-| `CONFIG` | `guild_id` | string |
-| `CONFIG` | `admin_role_id` | string (empty = no role gate, allow any guild member) |
-| `CONFIG` | `role_ids` | JSON array of Discord role IDs to show publicly |
+| `CONFIG` | `role_ids` | JSON array of Discord role IDs to show publicly. Written by Roles Config in the admin UI. |
 | `CONTENT` | `officers` | JSON array of `{id, name, image, about, order, createdAt, updatedAt?}` |
 | `CONTENT` | `events` | JSON array of `{id, title, subtitle, description, actionButtonText, actionButtonUrl, googleMapsUrl, imagePath, createdAt, updatedAt?}` |
 | `CONTENT` | `social` | JSON object `{discord, twitch, facebook, instagram, twitter, subscribe, exchange, status}` |
@@ -129,7 +127,7 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 | GET | `/api/auth/discord` | 302 → Discord OAuth authorize URL. |
 | GET | `/api/auth/callback` | Discord redirects here. Sets `admin_token` cookie, redirects to `ADMIN_URL`. |
 | POST | `/api/auth/logout` | Clears the `admin_token` cookie. |
-| GET, PUT | `/api/admin/config` | Read or update `guild_id`, `admin_role_id`, `role_ids`. PUT also invalidates the member cache. |
+| GET, PUT | `/api/admin/config` | GET returns `{guild_id, role_ids, bot_token_set, jwt_secret_set}` for the dashboard/settings views. PUT accepts `{role_ids}` only (used by Roles Config); also invalidates the member cache. |
 | GET | `/api/admin/roles` | All roles in the guild via the bot, minus `@everyone`. Used by Roles Config. |
 | GET | `/api/admin/members` | Same as public, but bypasses cache. `?format=csv` exports CSV. |
 | GET, POST | `/api/admin/officers` | List or create. POST returns the new item with a generated `id`. |
@@ -145,7 +143,7 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 3. Worker exchanges the code for a Discord access token, then calls:
    - `GET /users/@me` for identity
    - `GET /users/@me/guilds/{GUILD_ID}/member` to read the user's roles in our guild — this 404s if they aren't a member, which is the first gate.
-4. If `CONFIG:admin_role_id` is set and the user's `member.roles` doesn't include it, redirect to admin with `?error=not_authorized`. **If `admin_role_id` is empty, this check is skipped** — any guild member gets in.
+4. If `env.ADMIN_ROLE_ID` is set (in `wrangler.toml [vars]`) and the user's `member.roles` doesn't include it, redirect to admin with `?error=not_authorized`. **If `ADMIN_ROLE_ID` is empty, this check is skipped** — any guild member gets in.
 5. Otherwise sign an HS256 JWT (7-day expiry) and set it as `admin_token` cookie (`HttpOnly; Secure; SameSite=None`) on the worker domain. Redirect to `ADMIN_URL`.
 6. The admin SPA's `fetch(..., credentials: 'include')` calls back to the worker carry the cookie cross-site (worker on `workers.dev`, admin on `csgitpages.cspire.net`).
 
@@ -220,7 +218,7 @@ Then `npx wrangler deploy` once manually so the worker exists, after which CI ta
 
 - **Rotate `JWT_SECRET`:** `wrangler secret put JWT_SECRET`. All existing admin sessions invalidate immediately and users re-sign-in.
 - **Force-clear member cache without saving config:** the dashboard's "Refresh Member Cache" button does this by re-PUTing the existing `role_ids` (the PUT handler invalidates the cache as a side effect).
-- **Switch guilds:** update Guild ID in Settings, set a new Admin Role ID, ensure the bot is in the new guild with the right intent.
+- **Switch guilds or change the admin role:** edit `GUILD_ID` / `ADMIN_ROLE_ID` in `worker/wrangler.toml [vars]`, deploy. Ensure the bot is in the target guild with the right intent.
 - **Change the admin URL:** update `ADMIN_URL` in `wrangler.toml` *and* add the new origin to `ALLOWED_ORIGINS` in `worker/src/index.js`. The post-OAuth redirect goes to `ADMIN_URL`; the cross-site fetch CORS check uses `ALLOWED_ORIGINS`.
 - **Worker isn't deploying via CI:** check the Node version in `.gitlab-ci.yml` — wrangler 4 needs Node ≥22.
 
