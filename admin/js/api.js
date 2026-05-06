@@ -53,6 +53,9 @@ export const api = {
   getConfig: () => apiFetch('/api/admin/config'),
   putConfig: data => apiFetch('/api/admin/config', { method: 'PUT', body: JSON.stringify(data) }),
 
+  // Roles
+  getAllRoles: () => apiFetch('/api/admin/roles'),
+
   // Members
   getMembers: () => apiFetch('/api/admin/members'),
   exportMembersCsv: () => apiFetch('/api/admin/members?format=csv'),

@@ -107,6 +107,37 @@ export async function handleAdminConfig(request, env) {
   return methodNotAllowed();
 }
 
+export async function handleAdminRoles(request, env) {
+  await requireAuth(request, env);
+
+  const botToken = env.BOT_TOKEN;
+  if (!botToken) return jsonResponse({ error: 'BOT_TOKEN not configured' }, 500);
+
+  const guildId = (await env.CONFIG.get('guild_id')) || env.GUILD_ID || '379707231077138442';
+
+  const res = await fetch(`https://discord.com/api/v10/guilds/${guildId}/roles`, {
+    headers: { Authorization: `Bot ${botToken}` },
+  });
+  if (!res.ok) {
+    return jsonResponse({ error: `Discord roles fetch failed: ${res.status}` }, 502);
+  }
+  const all = await res.json();
+
+  // Exclude @everyone (whose role id equals the guild id)
+  const roles = all
+    .filter(r => r.id !== guildId)
+    .map(r => ({
+      id: r.id,
+      name: r.name,
+      position: r.position,
+      managed: !!r.managed,
+      color: r.color ? '#' + r.color.toString(16).padStart(6, '0') : null,
+    }))
+    .sort((a, b) => b.position - a.position);
+
+  return jsonResponse({ roles });
+}
+
 export async function handleAdminMembers(request, env) {
   const session = await requireAuth(request, env);
   const url = new URL(request.url);

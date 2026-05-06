@@ -4,6 +4,7 @@ import {
   handleAuthCallback,
   handleAuthLogout,
   handleAdminConfig,
+  handleAdminRoles,
   handleAdminMembers,
   handleAdminOfficers,
   handleAdminEvents,
@@ -65,6 +66,7 @@ async function route(request, env) {
 
   // Admin routes
   if (path === '/api/admin/config') return handleAdminConfig(request, env);
+  if (path === '/api/admin/roles') return handleAdminRoles(request, env);
   if (path === '/api/admin/members') return handleAdminMembers(request, env);
   if (path.startsWith('/api/admin/officers')) return handleAdminOfficers(request, env);
   if (path.startsWith('/api/admin/events')) return handleAdminEvents(request, env);
