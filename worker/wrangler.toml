@@ -9,7 +9,7 @@ GUILD_ID = "379707231077138442"
 ENVIRONMENT = "production"
 # URL of the deployed admin SPA. Used as the post-OAuth redirect target so
 # users land on the admin page (not the worker origin) after sign-in.
-ADMIN_URL = "https://cspiregaming.csgitpages.cspire.net"
+ADMIN_URL = "http://cspiregaming.csgitpages.cspire.net/cspiregaming-workers"
 
 # [[routes]]
 pattern = "cspiregaming-api.michaellamb.workers.dev"

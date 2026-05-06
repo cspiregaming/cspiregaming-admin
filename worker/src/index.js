@@ -12,6 +12,7 @@ import {
 
 const ALLOWED_ORIGINS = [
   'https://cspiregaming.github.io',
+  'http://cspiregaming.csgitpages.cspire.net',
   'https://cspiregaming.csgitpages.cspire.net',
   'https://cspiregaming.com',
   'https://www.cspiregaming.com',
