@@ -76,6 +76,8 @@ export const api = {
   getDiscordEvents: () => apiFetch('/api/admin/discord-events'),
   putDiscordEventOverlay: (id, data) =>
     apiFetch(`/api/admin/discord-events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  putDiscordEventOverlaysBatch: overlays =>
+    apiFetch('/api/admin/discord-events', { method: 'PUT', body: JSON.stringify({ overlays }) }),
 
   // Social
   getSocial: () => apiFetch('/api/admin/social'),

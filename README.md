@@ -143,6 +143,7 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 | GET, PUT, DELETE | `/api/admin/events/{id}` |  |
 | GET | `/api/admin/discord-events` | Returns `{live, archived, overlays}`. `live` and `archived` are normalized Discord scheduled events; `overlays` is the `discord_event_overlays` map. Calling this also runs the archive/prune logic when the live cache misses (every ~5 minutes). |
 | PUT | `/api/admin/discord-events/{eventId}` | Body: `{published, actionButtonText?, actionButtonUrl?}`. Writes (or removes if all fields empty) one entry in `discord_event_overlays`. |
+| PUT | `/api/admin/discord-events` | Batch update. Body: `{overlays: {<eventId>: {published, actionButtonText?, actionButtonUrl?}}}`. Single read-modify-write across the whole map; the admin UI uses this to avoid races when toggling multiple events at once. |
 | GET, PUT | `/api/admin/social` | Object stored under `CONTENT:social`. |
 
 ### Auth model

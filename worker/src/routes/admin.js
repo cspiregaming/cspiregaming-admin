@@ -1,6 +1,6 @@
 import { requireAuth, buildOAuthUrl, signJwt } from '../auth.js';
 import { discordOAuthExchange, fetchGuildMembers } from '../discord.js';
-import { getDiscordEventsWithArchive, getOverlays, setOverlay } from '../discord-events.js';
+import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -212,6 +212,16 @@ export async function handleAdminDiscordEvents(request, env) {
     const body = await request.json();
     const overlays = await setOverlay(env, eventId, body);
     return jsonResponse({ ok: true, overlay: overlays[eventId] || null });
+  }
+
+  // Batch PUT — body: { overlays: { <eventId>: {published, actionButtonText?, actionButtonUrl?} } }
+  if (request.method === 'PUT' && !eventId) {
+    const body = await request.json();
+    if (!body.overlays || typeof body.overlays !== 'object') {
+      return jsonResponse({ error: 'Body must be { overlays: { ... } }' }, 400);
+    }
+    const overlays = await setOverlaysBatch(env, body.overlays);
+    return jsonResponse({ ok: true, overlays });
   }
 
   return methodNotAllowed();

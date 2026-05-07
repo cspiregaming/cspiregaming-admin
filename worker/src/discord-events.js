@@ -89,6 +89,27 @@ export async function getOverlays(env) {
 
 export async function setOverlay(env, eventId, overlay) {
   const overlays = await getOverlays(env);
+  applyOverlay(overlays, eventId, overlay);
+  await env.CONTENT.put('discord_event_overlays', JSON.stringify(overlays));
+  return overlays;
+}
+
+/**
+ * Replace the overlay map for the given event IDs in a single read-modify-write.
+ * Pass an object keyed by event ID; entries whose `published` is falsy AND have
+ * no action button fields are removed, otherwise they overwrite the existing
+ * entry. Event IDs not in `updates` are left untouched.
+ */
+export async function setOverlaysBatch(env, updates) {
+  const overlays = await getOverlays(env);
+  for (const [eventId, overlay] of Object.entries(updates)) {
+    applyOverlay(overlays, eventId, overlay);
+  }
+  await env.CONTENT.put('discord_event_overlays', JSON.stringify(overlays));
+  return overlays;
+}
+
+function applyOverlay(overlays, eventId, overlay) {
   const next = {
     published: !!overlay.published,
     actionButtonText: overlay.actionButtonText || null,
@@ -99,6 +120,4 @@ export async function setOverlay(env, eventId, overlay) {
   } else {
     overlays[eventId] = next;
   }
-  await env.CONTENT.put('discord_event_overlays', JSON.stringify(overlays));
-  return overlays;
 }

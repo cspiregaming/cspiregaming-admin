@@ -253,25 +253,28 @@ export async function renderEvents(container) {
       saveBtn.textContent = 'Saving…';
       const feedback = document.getElementById('discord-feedback');
       try {
-        // Diff workingOverlays vs discordData.overlays and PUT only changed entries
+        // Diff workingOverlays vs discordData.overlays into a single batch payload.
         const all = [...discordData.live, ...discordData.archived];
-        const ids = new Set(all.map(ev => ev.id));
         const previous = discordData.overlays || {};
-        const writes = [];
-        for (const id of ids) {
-          const prev = previous[id] || {};
-          const next = workingOverlays[id] || {};
+        const updates = {};
+        let changed = 0;
+        for (const ev of all) {
+          const prev = previous[ev.id] || {};
+          const next = workingOverlays[ev.id] || {};
           if (
             (prev.published || false) !== (next.published || false) ||
             (prev.actionButtonText || null) !== (next.actionButtonText || null) ||
             (prev.actionButtonUrl || null) !== (next.actionButtonUrl || null)
           ) {
-            writes.push(api.putDiscordEventOverlay(id, next));
+            updates[ev.id] = next;
+            changed++;
           }
         }
-        await Promise.all(writes);
+        if (changed) {
+          await api.putDiscordEventOverlaysBatch(updates);
+        }
         discordData.overlays = JSON.parse(JSON.stringify(workingOverlays));
-        feedback.innerHTML = `<div class="alert alert-success">✓ Saved${writes.length ? ` (${writes.length} event${writes.length === 1 ? '' : 's'})` : ' — no changes'}.</div>`;
+        feedback.innerHTML = `<div class="alert alert-success">✓ Saved${changed ? ` (${changed} event${changed === 1 ? '' : 's'})` : ' — no changes'}.</div>`;
       } catch (err) {
         feedback.innerHTML = `<div class="alert alert-error">Save failed: ${escHtml(err.message)}</div>`;
       } finally {
