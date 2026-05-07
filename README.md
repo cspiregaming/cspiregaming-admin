@@ -55,7 +55,7 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
 
 - **Dashboard** — at-a-glance counts, "Refresh Member Cache" button (forces a re-fetch from Discord), and CSV export.
 - **Members** — live roster pulled from Discord via the bot. Filter by role, export to CSV.
-- **Roles Config** — toggle which Discord roles appear publicly on the homepage. The full guild role list comes from Discord; check the ones you want shown. Saves go live within 5 minutes (or hit "Refresh Member Cache" on the dashboard to apply immediately).
+- **Roles Config** — toggle which Discord roles appear publicly on the homepage, and pick which one (or "All Members") is selected by default when a visitor lands on the Members section. The full guild role list comes from Discord; check the ones you want shown. Saves go live within 5 minutes (or hit "Refresh Member Cache" on the dashboard to apply immediately).
 - **Officers** — manually-curated officer cards (name, photo URL, bio HTML, display order). Used by the public site's "Officers" section.
 - **Events** — manually-curated event cards (title, subtitle, description HTML, action button, optional Google Maps embed and cover image).
 - **Social Links** — Discord, Twitch, Facebook, Instagram, Twitter/X, Subscribe, Outlook group, Status page URLs.
@@ -111,6 +111,7 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 | Binding | Key | Value |
 | --- | --- | --- |
 | `CONFIG` | `role_ids` | JSON array of Discord role IDs to show publicly. Written by Roles Config in the admin UI. |
+| `CONFIG` | `default_role_id` | Optional Discord role ID that should be the active filter chip on first load of the public Members section. Absent (or unset) means "All Members". |
 | `CONTENT` | `officers` | JSON array of `{id, name, image, about, order, createdAt, updatedAt?}` |
 | `CONTENT` | `events` | JSON array of `{id, title, subtitle, description, actionButtonText, actionButtonUrl, googleMapsUrl, imagePath, createdAt, updatedAt?}` |
 | `CONTENT` | `social` | JSON object `{discord, twitch, facebook, instagram, twitter, subscribe, exchange, status}` |
@@ -122,12 +123,12 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| GET | `/api/public/members` | Returns members with at least one configured role + role metadata. Cached 5 min. |
+| GET | `/api/public/members` | Returns members with at least one configured role + role metadata + `defaultRoleId` (the role ID the public site should pre-select, or `null` for "All Members"). Cached 5 min. |
 | GET | `/api/public/content` | Returns `{officers, events, social}` from KV. |
 | GET | `/api/auth/discord` | 302 → Discord OAuth authorize URL. |
 | GET | `/api/auth/callback` | Discord redirects here. Sets `admin_token` cookie, redirects to `ADMIN_URL`. |
 | POST | `/api/auth/logout` | Clears the `admin_token` cookie. |
-| GET, PUT | `/api/admin/config` | GET returns `{guild_id, role_ids, bot_token_set, jwt_secret_set}` for the dashboard/settings views. PUT accepts `{role_ids}` only (used by Roles Config); also invalidates the member cache. |
+| GET, PUT | `/api/admin/config` | GET returns `{guild_id, role_ids, default_role_id, bot_token_set, jwt_secret_set}` for the dashboard/settings views. PUT accepts `{role_ids, default_role_id}` (both optional, used by Roles Config); `default_role_id` is cleared when set to `null`, `"all"`, or a role ID not present in the saved `role_ids`. Also invalidates the member cache. |
 | GET | `/api/admin/roles` | All roles in the guild via the bot, minus `@everyone`. Used by Roles Config. |
 | GET | `/api/admin/members` | Same as public, but bypasses cache. `?format=csv` exports CSV. |
 | GET, POST | `/api/admin/officers` | List or create. POST returns the new item with a generated `id`. |

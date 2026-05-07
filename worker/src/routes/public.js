@@ -5,26 +5,33 @@ const MEMBERS_CACHE_TTL = 300; // 5 minutes
 export async function handlePublicMembers(request, env) {
   const guildId = env.GUILD_ID;
 
-  // Load configured role IDs from KV (set via admin UI)
-  const roleIdsRaw = await env.CONFIG.get('role_ids');
+  // Load configured role IDs and default selection from KV (set via admin UI)
+  const [roleIdsRaw, defaultRoleIdRaw] = await Promise.all([
+    env.CONFIG.get('role_ids'),
+    env.CONFIG.get('default_role_id'),
+  ]);
   const roleIds = roleIdsRaw ? JSON.parse(roleIdsRaw) : [];
+  const defaultRoleId = defaultRoleIdRaw && roleIds.includes(defaultRoleIdRaw)
+    ? defaultRoleIdRaw
+    : null;
 
   if (!roleIds.length) {
-    return jsonResponse({ members: [], roles: [], totalMembers: 0, fetchedAt: new Date().toISOString() });
+    return jsonResponse({ members: [], roles: [], totalMembers: 0, defaultRoleId, fetchedAt: new Date().toISOString() });
   }
 
   // Check cache
   const cacheKey = `members_${guildId}`;
   const cached = await env.CACHE.get(cacheKey, 'json');
-  if (cached) return jsonResponse(cached);
+  if (cached) return jsonResponse({ ...cached, defaultRoleId });
 
   // Fetch from Discord
   const data = await fetchGuildMembers(env, guildId, roleIds);
 
-  // Store in KV with TTL
+  // Store in KV with TTL (defaultRoleId is layered on at response time so
+  // changing it doesn't require invalidating the member roster cache)
   await env.CACHE.put(cacheKey, JSON.stringify(data), { expirationTtl: MEMBERS_CACHE_TTL });
 
-  return jsonResponse(data);
+  return jsonResponse({ ...data, defaultRoleId });
 }
 
 export async function handlePublicContent(request, env) {

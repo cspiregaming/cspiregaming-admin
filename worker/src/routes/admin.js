@@ -70,10 +70,14 @@ export async function handleAdminConfig(request, env) {
   const session = await requireAuth(request, env);
 
   if (request.method === 'GET') {
-    const roleIds = await env.CONFIG.get('role_ids');
+    const [roleIdsRaw, defaultRoleId] = await Promise.all([
+      env.CONFIG.get('role_ids'),
+      env.CONFIG.get('default_role_id'),
+    ]);
     return jsonResponse({
       guild_id: env.GUILD_ID,
-      role_ids: roleIds ? JSON.parse(roleIds) : [],
+      role_ids: roleIdsRaw ? JSON.parse(roleIdsRaw) : [],
+      default_role_id: defaultRoleId || null,
       bot_token_set: !!(env.BOT_TOKEN),
       jwt_secret_set: !!(env.JWT_SECRET),
     });
@@ -81,10 +85,29 @@ export async function handleAdminConfig(request, env) {
 
   if (request.method === 'PUT') {
     const body = await request.json();
+    let cacheDirty = false;
+
     if (body.role_ids != null) {
       await env.CONFIG.put('role_ids', JSON.stringify(body.role_ids));
-      await env.CACHE.delete(`members_${env.GUILD_ID}`);
+      cacheDirty = true;
     }
+
+    if ('default_role_id' in body) {
+      // Normalize: enabled role IDs win; "all" / null / unknown role → cleared.
+      const roleIdsRaw = body.role_ids != null
+        ? body.role_ids
+        : JSON.parse((await env.CONFIG.get('role_ids')) || '[]');
+      const enabled = new Set(roleIdsRaw);
+      const next = body.default_role_id;
+      if (next && next !== 'all' && enabled.has(next)) {
+        await env.CONFIG.put('default_role_id', next);
+      } else {
+        await env.CONFIG.delete('default_role_id');
+      }
+      cacheDirty = true;
+    }
+
+    if (cacheDirty) await env.CACHE.delete(`members_${env.GUILD_ID}`);
     return jsonResponse({ ok: true });
   }
 
