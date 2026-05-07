@@ -94,22 +94,6 @@ export async function renderRolesConfig(container) {
         refreshDefaultRoleDropdown();
       });
     });
-  }
-
-  function refreshDefaultRoleDropdown() {
-    if (defaultRoleId !== 'all' && !enabledRoleIds.has(defaultRoleId)) {
-      defaultRoleId = 'all';
-    }
-    const select = document.getElementById('default-role');
-    if (!select) return;
-    const opts = ['<option value="all">All Members</option>'].concat(
-      allRoles
-        .filter(r => enabledRoleIds.has(r.id))
-        .map(r => `<option value="${escHtml(r.id)}">${escHtml(r.name)}</option>`)
-    );
-    select.innerHTML = opts.join('');
-    select.value = defaultRoleId;
-  }
 
     document.getElementById('btn-save-roles')?.addEventListener('click', async () => {
       syncCheckboxesToSet();
@@ -131,6 +115,21 @@ export async function renderRolesConfig(container) {
         btn.textContent = 'Save Changes';
       }
     });
+  }
+
+  function refreshDefaultRoleDropdown() {
+    if (defaultRoleId !== 'all' && !enabledRoleIds.has(defaultRoleId)) {
+      defaultRoleId = 'all';
+    }
+    const select = document.getElementById('default-role');
+    if (!select) return;
+    const opts = ['<option value="all">All Members</option>'].concat(
+      allRoles
+        .filter(r => enabledRoleIds.has(r.id))
+        .map(r => `<option value="${escHtml(r.id)}">${escHtml(r.name)}</option>`)
+    );
+    select.innerHTML = opts.join('');
+    select.value = defaultRoleId;
   }
 
   function renderRoleRow(r) {
