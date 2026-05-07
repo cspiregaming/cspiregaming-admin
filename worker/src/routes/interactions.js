@@ -1,0 +1,285 @@
+/**
+ * Discord interactions endpoint. Verifies Ed25519 signatures, then dispatches
+ * by interaction type. All slow paths defer (type 5/6) and finish in
+ * ctx.waitUntil so we hit Discord's 3-second response deadline.
+ */
+
+import {
+  verifyDiscordRequest,
+  jsonResponse,
+  INTERACTION_TYPE,
+  RESPONSE_TYPE,
+  FLAGS,
+} from '../discord-interactions.js';
+import { getDiscordEventsWithArchive, getOverlays } from '../discord-events.js';
+import {
+  postChannelMessage,
+  editOriginalInteractionResponse,
+} from '../discord-outbound.js';
+import * as requests from '../event-publish-requests.js';
+
+export async function handleInteractions(request, env, ctx) {
+  if (request.method !== 'POST') {
+    return new Response('Method not allowed', { status: 405 });
+  }
+
+  const verified = await verifyDiscordRequest(request, env.DISCORD_PUBLIC_KEY);
+  if (!verified.ok) {
+    return new Response('invalid request signature', { status: 401 });
+  }
+
+  const interaction = verified.json;
+
+  switch (interaction.type) {
+    case INTERACTION_TYPE.PING:
+      return jsonResponse({ type: RESPONSE_TYPE.PONG });
+
+    case INTERACTION_TYPE.APPLICATION_COMMAND_AUTOCOMPLETE:
+      return handleAutocomplete(interaction, env);
+
+    case INTERACTION_TYPE.APPLICATION_COMMAND:
+      return handleCommand(interaction, env, ctx);
+
+    case INTERACTION_TYPE.MESSAGE_COMPONENT:
+      return handleComponent(interaction, env, ctx);
+
+    default:
+      return jsonResponse({ error: 'unknown interaction type' }, 400);
+  }
+}
+
+// ─── Autocomplete ────────────────────────────────────────────────────────────
+
+async function handleAutocomplete(interaction, env) {
+  if (interaction.data?.name !== 'request-event-publish') {
+    return jsonResponse({ type: RESPONSE_TYPE.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, data: { choices: [] } });
+  }
+  const focused = (interaction.data.options || []).find(o => o.focused);
+  const query = (focused?.value || '').toLowerCase();
+
+  let events = [];
+  try {
+    const { live } = await getDiscordEventsWithArchive(env);
+    events = live;
+  } catch {
+    events = [];
+  }
+  const overlays = await getOverlays(env).catch(() => ({}));
+  const pending = await requests.getPending(env).catch(() => []);
+  const pendingEventIds = new Set(pending.map(r => r.eventId));
+
+  const choices = events
+    .filter(e => e.status === 'SCHEDULED' || e.status === 'ACTIVE')
+    .filter(e => !overlays[e.id]?.published)
+    .filter(e => !pendingEventIds.has(e.id))
+    .filter(e => !query || e.title.toLowerCase().includes(query))
+    .slice(0, 25)
+    .map(e => ({
+      name: truncate(`${e.title} · ${formatDate(e.startTime)}`, 100),
+      value: e.id,
+    }));
+
+  return jsonResponse({
+    type: RESPONSE_TYPE.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+    data: { choices },
+  });
+}
+
+// ─── Slash command ───────────────────────────────────────────────────────────
+
+async function handleCommand(interaction, env, ctx) {
+  if (interaction.data?.name !== 'request-event-publish') {
+    return ephemeralReply('Unknown command.');
+  }
+
+  const memberRoles = interaction.member?.roles || [];
+  const allowedRoles = parseRoleList(env.REQUESTER_ROLE_IDS);
+  if (!allowedRoles.length) {
+    return ephemeralReply('Event publishing is not configured. Ping a developer.');
+  }
+  if (!memberRoles.some(r => allowedRoles.includes(r))) {
+    return ephemeralReply('You don\'t have permission to request event publishing.');
+  }
+
+  const eventId = (interaction.data.options || []).find(o => o.name === 'event')?.value;
+  if (!eventId) return ephemeralReply('Pick an event from the autocomplete options.');
+
+  // Validate up front (fast path) — defer slow work.
+  let event;
+  try {
+    const { live } = await getDiscordEventsWithArchive(env);
+    event = live.find(e => e.id === eventId);
+  } catch {
+    return ephemeralReply('Couldn\'t reach Discord. Try again in a moment.');
+  }
+  if (!event) return ephemeralReply('That event no longer exists.');
+  if (event.status !== 'SCHEDULED' && event.status !== 'ACTIVE') {
+    return ephemeralReply('That event isn\'t schedulable for publishing.');
+  }
+  const overlays = await getOverlays(env);
+  if (overlays[eventId]?.published) {
+    return ephemeralReply('That event is already on the website.');
+  }
+  const existingPending = await requests.getPendingByEventId(env, eventId);
+  if (existingPending) {
+    return ephemeralReply('A request for that event is already pending — an officer will review it.');
+  }
+
+  // Defer and finish the work in waitUntil.
+  ctx.waitUntil(submitRequestPipeline(interaction, env, event));
+
+  return jsonResponse({
+    type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE,
+    data: { flags: FLAGS.EPHEMERAL },
+  });
+}
+
+async function submitRequestPipeline(interaction, env, event) {
+  const requesterUser = interaction.member?.user || interaction.user;
+  const requestedBy = {
+    id: requesterUser?.id,
+    username: requesterUser?.username,
+    displayName: interaction.member?.nick || requesterUser?.global_name || requesterUser?.username,
+  };
+
+  const channelId = env.OFFICERS_CHANNEL_ID;
+  if (!channelId) {
+    return editOriginal(interaction, env, '⚠️ Officers channel not configured. Ping a developer.');
+  }
+
+  // Channel post is load-bearing — if it fails, don't persist the request.
+  const reqId = interaction.id;
+  const messagePayload = buildOfficersMessage(reqId, event, requestedBy);
+  const post = await postChannelMessage(env, channelId, messagePayload);
+
+  if (!post.ok || !post.json?.id) {
+    return editOriginal(interaction, env, '⚠️ Couldn\'t notify officers — ping a developer.');
+  }
+
+  try {
+    await requests.create(env, {
+      id: reqId,
+      eventId: event.id,
+      requestedBy,
+      channelId,
+      channelMessageId: post.json.id,
+    });
+  } catch (err) {
+    console.error('event-publish-requests: create failed', err);
+    return editOriginal(interaction, env, '⚠️ Request couldn\'t be saved — ping a developer.');
+  }
+
+  return editOriginal(interaction, env, '✓ Request submitted. An officer will review it.');
+}
+
+function buildOfficersMessage(reqId, event, requestedBy) {
+  const start = event.startTime ? `<t:${Math.floor(new Date(event.startTime).getTime() / 1000)}:F>` : 'TBD';
+  return {
+    content: 'Event publish request',
+    embeds: [{
+      title: event.title,
+      url: event.discordUrl,
+      description: event.description ? truncate(event.description, 600) : undefined,
+      fields: [
+        { name: 'Start', value: start, inline: true },
+        { name: 'Status', value: event.status, inline: true },
+        { name: 'Requested by', value: requestedBy.displayName || requestedBy.username || requestedBy.id, inline: false },
+      ].filter(f => f.value),
+    }],
+    components: [{
+      type: 1, // action row
+      components: [
+        { type: 2, style: 3, label: 'Approve', custom_id: `evpub:approve:${reqId}:${event.id}` },
+        { type: 2, style: 4, label: 'Deny', custom_id: `evpub:deny:${reqId}:${event.id}` },
+      ],
+    }],
+  };
+}
+
+// ─── Button click ────────────────────────────────────────────────────────────
+
+async function handleComponent(interaction, env, ctx) {
+  const customId = interaction.data?.custom_id || '';
+  if (!customId.startsWith('evpub:')) {
+    return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_UPDATE_MESSAGE });
+  }
+
+  const [, action, reqId, eventId] = customId.split(':');
+  if (!action || !reqId || !eventId) {
+    return ephemeralReply('Malformed button.');
+  }
+
+  const memberRoles = interaction.member?.roles || [];
+  if (env.ADMIN_ROLE_ID && !memberRoles.includes(env.ADMIN_ROLE_ID)) {
+    return ephemeralReply('Only officers can approve or deny.');
+  }
+
+  const decider = interaction.member?.user || interaction.user;
+  const decidedBy = {
+    id: decider?.id,
+    displayName: interaction.member?.nick || decider?.global_name || decider?.username,
+  };
+
+  ctx.waitUntil(decidePipeline(interaction, env, reqId, action, decidedBy));
+
+  return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_UPDATE_MESSAGE });
+}
+
+async function decidePipeline(interaction, env, reqId, action, decidedBy) {
+  const status = action === 'approve' ? 'approved' : 'denied';
+  try {
+    const result = await requests.applyDecision(env, reqId, status, decidedBy);
+    if (result.error === 'not_found') {
+      return editOriginalUpdate(interaction, env, '⚠️ Request not found.');
+    }
+    if (result.alreadyDecided) {
+      const who = result.prior.decidedBy?.displayName || 'someone';
+      return editOriginalUpdate(interaction, env, `Already ${result.prior.status} by ${who}.`);
+    }
+    // applyDecision already edited the channel message; nothing more to do.
+  } catch (err) {
+    console.error('decidePipeline error', err);
+    return editOriginalUpdate(interaction, env, '⚠️ Decision failed — ping a developer.');
+  }
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function ephemeralReply(content) {
+  return jsonResponse({
+    type: RESPONSE_TYPE.CHANNEL_MESSAGE,
+    data: { content, flags: FLAGS.EPHEMERAL },
+  });
+}
+
+function editOriginal(interaction, env, content) {
+  return editOriginalInteractionResponse(env, interaction.application_id, interaction.token, { content });
+}
+
+function editOriginalUpdate(interaction, env, content) {
+  // For DEFERRED_UPDATE_MESSAGE follow-ups, editing @original updates the
+  // message we deferred against (the channel post). Use a fresh ephemeral
+  // followup instead so we don't clobber applyDecision's footer edit.
+  const url = `https://discord.com/api/v10/webhooks/${interaction.application_id}/${interaction.token}`;
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content, flags: FLAGS.EPHEMERAL }),
+  });
+}
+
+function parseRoleList(raw) {
+  if (!raw) return [];
+  return String(raw).split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function formatDate(iso) {
+  if (!iso) return 'TBD';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+function truncate(s, n) {
+  if (!s) return s;
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}

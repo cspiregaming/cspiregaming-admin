@@ -11,6 +11,7 @@ import {
   handleAdminDiscordEvents,
   handleAdminSocial,
 } from './routes/admin.js';
+import { handleInteractions } from './routes/interactions.js';
 
 const ALLOWED_ORIGINS = [
   'https://cspiregaming.github.io',
@@ -33,7 +34,7 @@ export default {
     }
 
     try {
-      const response = await route(request, env);
+      const response = await route(request, env, ctx);
       // Attach CORS headers to every response
       const headers = new Headers(response.headers);
       for (const [k, v] of Object.entries(corsHeaders(corsOrigin))) {
@@ -52,13 +53,16 @@ export default {
   },
 };
 
-async function route(request, env) {
+async function route(request, env, ctx) {
   const url = new URL(request.url);
   const path = url.pathname;
 
   // Public routes
   if (path === '/api/public/members') return handlePublicMembers(request, env);
   if (path === '/api/public/content') return handlePublicContent(request, env);
+
+  // Discord interactions (signature-verified)
+  if (path === '/api/interactions') return handleInteractions(request, env, ctx);
 
   // Auth routes
   if (path === '/api/auth/discord') return handleAuthDiscord(request, env);

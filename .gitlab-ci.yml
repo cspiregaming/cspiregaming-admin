@@ -18,6 +18,23 @@ deploy-worker:
   #   CLOUDFLARE_API_TOKEN  - Cloudflare API token with Workers:Edit permission
   #   CLOUDFLARE_ACCOUNT_ID - Your Cloudflare account ID
 
+# Register Discord slash commands after a successful worker deploy. Discord's
+# bulk-overwrite endpoint is idempotent, so this is safe to run on every push.
+register-discord-commands:
+  stage: deploy
+  image: node:22-alpine
+  needs: ["deploy-worker"]
+  only:
+    - main
+  script:
+    - cd worker
+    - node scripts/register-commands.js
+  variables:
+    GUILD_ID: "379707231077138442"
+  # Required CI/CD variables:
+  #   DISCORD_APP_ID  - Discord application ID (same value as DISCORD_CLIENT_ID; public)
+  #   BOT_TOKEN       - Discord bot token (already required by deploy-worker via wrangler secret)
+
 # Deploy Admin page to GitLab Pages (served at cspiregaming.csgitpages.cspire.net)
 pages:
   stage: deploy

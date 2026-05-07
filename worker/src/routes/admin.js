@@ -1,6 +1,7 @@
 import { requireAuth, buildOAuthUrl, signJwt } from '../auth.js';
 import { discordOAuthExchange, fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
+import * as eventPublishRequests from '../event-publish-requests.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -189,7 +190,7 @@ export async function handleAdminEvents(request, env) {
 }
 
 export async function handleAdminDiscordEvents(request, env) {
-  await requireAuth(request, env);
+  const session = await requireAuth(request, env);
   const url = new URL(request.url);
   const pathParts = url.pathname.split('/').filter(Boolean);
   // /api/admin/discord-events            → pathParts[2] === 'discord-events', no id
@@ -221,6 +222,23 @@ export async function handleAdminDiscordEvents(request, env) {
       return jsonResponse({ error: 'Body must be { overlays: { ... } }' }, 400);
     }
     const overlays = await setOverlaysBatch(env, body.overlays);
+
+    // Reconcile any pending publish requests for events that just flipped to
+    // published. Best-effort — overlay write already succeeded, so we don't
+    // surface failures here as the request status.
+    const decidedBy = { id: session.sub, displayName: session.displayName || session.username };
+    for (const [evId, overlay] of Object.entries(body.overlays)) {
+      if (!overlay?.published) continue;
+      try {
+        const pending = await eventPublishRequests.getPendingByEventId(env, evId);
+        if (pending) {
+          await eventPublishRequests.applyDecision(env, pending.id, 'approved', decidedBy);
+        }
+      } catch (err) {
+        console.error('reconcile publish request failed', evId, err);
+      }
+    }
+
     return jsonResponse({ ok: true, overlays });
   }
 

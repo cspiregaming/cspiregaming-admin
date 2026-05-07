@@ -58,8 +58,18 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
 - **Roles Config** — toggle which Discord roles appear publicly on the homepage, and pick which one (or "All Members") is selected by default when a visitor lands on the Members section. The full guild role list comes from Discord; check the ones you want shown. Saves go live within 5 minutes (or hit "Refresh Member Cache" on the dashboard to apply immediately).
 - **Officers** — manually-curated officer cards (name, photo URL, bio HTML, display order). Used by the public site's "Officers" section.
 - **Events** — split into two sections:
-  - **Discord Events** — live list of guild scheduled events from Discord. Toggle "Publish" to surface an event on the public site, and optionally provide a custom action button (text + URL) per event. Default action button is "View on Discord". Recent past events stay listed for 30 days after they end.
+  - **Discord Events** — live list of guild scheduled events from Discord. Toggle "Publish" to surface an event on the public site, and optionally provide a custom action button (text + URL) per event. Default action button is "View on Discord". Recent past events stay listed for 30 days after they end. Toggling Publish here also auto-resolves any pending `/request-event-publish` request for the event (see below).
   - **Manual Events** — hand-curated event cards (title, subtitle, description HTML, action button, optional Google Maps embed and cover image) for events that don't live in Discord.
+
+### Event publish requests
+
+Members with the configured requester roles (e.g. *C Spire Employee*, *Mods*) can run `/request-event-publish` in Discord to ask for one of their scheduled events to be surfaced on the public website. The bot picks events from autocomplete and posts a request card with **Approve** / **Deny** buttons in the configured officers channel.
+
+- Officers click Approve or Deny in the channel — the buttons disappear and the message gets edited to record who decided and when. Approve flips the public publish flag (same toggle as the admin SPA) and the event appears on cspiregaming.github.io within 5 minutes.
+- The admin SPA is the alternate path: an officer who toggles Publish in **Discord Events** while a request is pending also auto-resolves it (the channel message is edited to "Approved by …" automatically).
+- Requests older than 30 days from their decision time are auto-pruned.
+
+If `/request-event-publish` doesn't show up in Discord, the bot is missing the `applications.commands` scope — see [Discord application](#discord-application).
 - **Social Links** — Discord, Twitch, Facebook, Instagram, Twitter/X, Subscribe, Outlook group, Status page URLs.
 - **Settings** — read-only view of bot/JWT secret status and the current guild. Guild ID and Admin Role ID are managed in `worker/wrangler.toml` by developers. Also has a **Sign Out** button.
 
@@ -118,6 +128,7 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 | `CONTENT` | `events` | JSON array of `{id, title, subtitle, description, actionButtonText, actionButtonUrl, googleMapsUrl, imagePath, createdAt, updatedAt?}` |
 | `CONTENT` | `discord_event_overlays` | JSON object keyed by Discord scheduled-event ID. Each entry: `{published, actionButtonText?, actionButtonUrl?}`. Only events with `published === true` show on the public site. Empty entries are deleted. |
 | `CONTENT` | `past_discord_events` | JSON object keyed by Discord event ID, snapshotted when an event completes or disappears from Discord. Each entry is the normalized event shape plus `archivedAt`. Pruned to entries newer than 30 days every time the live cache misses. |
+| `CONTENT` | `event_publish_requests` | JSON object keyed by Discord interaction ID. Each entry: `{id, eventId, requestedBy, requestedAt, status: 'pending'\|'approved'\|'denied', channelId, channelMessageId, decidedBy?, decidedAt?, downgradeReason?}`. Pruned 30 days after `decidedAt`. |
 | `CONTENT` | `social` | JSON object `{discord, twitch, facebook, instagram, twitter, subscribe, exchange, status}` |
 | `CACHE` | `members_<guildId>` | cached members payload, TTL 300s |
 | `CACHE` | `discord_events_live` | cached normalized list of Discord scheduled events, TTL 300s |
@@ -129,6 +140,7 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 
 | Method | Path | Notes |
 | --- | --- | --- |
+| POST | `/api/interactions` | Discord interactions endpoint. Verifies Ed25519 signatures via `DISCORD_PUBLIC_KEY`. Handles PING, slash commands (`/request-event-publish`), button clicks (Approve/Deny on the officers-channel post), and autocomplete. Discord-only — not called by the SPA or public site. |
 | GET | `/api/public/members` | Returns members with at least one configured role + role metadata + `defaultRoleId` (the role ID the public site should pre-select, or `null` for "All Members"). Cached 5 min. |
 | GET | `/api/public/content` | Returns `{officers, events, social}`. `events` is a unified, time-sorted list combining published Discord events (live + recent-past archive) with manually-curated events; each entry has `source: 'discord' \| 'manual'` plus the rendering fields (`title, subtitle, description, startTime, endTime, status, location, imagePath\|coverImage, actionButtonText, actionButtonUrl, googleMapsUrl, discordUrl?`). |
 | GET | `/api/auth/discord` | 302 → Discord OAuth authorize URL. |
@@ -164,18 +176,24 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 CI (`.gitlab-ci.yml`):
 
 - **`deploy-worker`** — runs `npx wrangler deploy` from `worker/` on every push to `main`.
+- **`register-discord-commands`** — runs `node scripts/register-commands.js` after `deploy-worker` succeeds. Discord's bulk-overwrite endpoint is idempotent, so this is safe (and cheap) on every push.
 - **`pages`** — copies `admin/` into `public/` and publishes to GitLab Pages.
 
 Required CI/CD variables (Settings → CI/CD → Variables in csgit, masked + protected):
 
 - `CLOUDFLARE_API_TOKEN` — Cloudflare token with the **Edit Cloudflare Workers** template, or manually: Account → Workers Scripts: Edit, Workers KV Storage: Edit, Account Settings: Read.
 - `CLOUDFLARE_ACCOUNT_ID` — from the Cloudflare dashboard sidebar or `npx wrangler whoami`.
+- `DISCORD_APP_ID` — Discord application ID (same value as the `DISCORD_CLIENT_ID` secret; safe to expose).
+- `BOT_TOKEN` — Discord bot token. Used by the slash-command registration job.
 
 Manual deploy:
 
 ```bash
 cd worker
 npx wrangler deploy
+
+# Register / refresh slash commands (CI does this automatically on push to main)
+DISCORD_APP_ID=… GUILD_ID=379707231077138442 BOT_TOKEN=… npm run register-commands
 ```
 
 ### Adding a new content type (worked example)
@@ -194,8 +212,11 @@ The bot and OAuth app live in the same Discord application at https://discord.co
 
 - **Bot tab** — enable the **Server Members Intent** (privileged). Without it, member fetching fails silently with empty results.
 - **OAuth2 → Redirects** — register `https://cspiregaming-api.michaellamb.workers.dev/api/auth/callback` *exactly*. If this isn't there, every authorize request fails with "invalid redirect_uri" before reaching the worker.
+- **General Information → Interactions Endpoint URL** — set to `https://cspiregaming-api.michaellamb.workers.dev/api/interactions`. Discord PINGs the endpoint when you save the URL; the worker must already be deployed with the route live, or the save will fail with a verification error.
+- **General Information → Public Key** — copy this into the `DISCORD_PUBLIC_KEY` secret (`wrangler secret put DISCORD_PUBLIC_KEY`). Used to verify Ed25519 signatures on every interaction request.
 - **Bot → Reset Token / Generate** if you need to rotate the bot token. Then run `wrangler secret put BOT_TOKEN`.
-- The bot must be invited to guild `379707231077138442` with the `bot` scope and at least the **View Server Members** permission.
+- The bot must be invited to guild `379707231077138442` with **both** the `bot` and `applications.commands` scopes. Without `applications.commands`, slash commands silently won't appear in the picker. Re-invite URL: `https://discord.com/oauth2/authorize?client_id=<DISCORD_APP_ID>&scope=bot+applications.commands&permissions=0`.
+- Bot must have **View Server Members** for the members feature, and **View Channel + Send Messages + Embed Links** in the channel referenced by `OFFICERS_CHANNEL_ID` for the publish-request flow.
 
 ### First-time Cloudflare setup
 
@@ -220,7 +241,10 @@ npx wrangler secret put BOT_TOKEN              # Discord bot token
 npx wrangler secret put JWT_SECRET             # any random string: openssl rand -hex 32
 npx wrangler secret put DISCORD_CLIENT_ID      # Discord OAuth2 application client ID
 npx wrangler secret put DISCORD_CLIENT_SECRET  # Discord OAuth2 application client secret
+npx wrangler secret put DISCORD_PUBLIC_KEY     # Discord application Public Key (Developer Portal → General Information)
 ```
+
+Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, and `REQUESTER_ROLE_IDS` (comma list of Discord role IDs allowed to use `/request-event-publish`).
 
 Then `npx wrangler deploy` once manually so the worker exists, after which CI takes over.
 
@@ -241,6 +265,9 @@ Then `npx wrangler deploy` once manually so the worker exists, after which CI ta
 | Members section is empty on the public site | (a) no roles configured in Roles Config, or (b) bot is missing the Server Members Intent, or (c) bot was kicked from the guild. |
 | Discord Events admin section shows nothing | (a) no scheduled events exist in the guild, or (b) the bot lacks `VIEW_CHANNEL` on the channel hosting a voice-channel event (external-location events don't need this). External-location and stage events that the bot can see are returned regardless. |
 | Published Discord event isn't appearing on the public site | Check that `published === true` for that event ID in `CONTENT:discord_event_overlays`, the event isn't `CANCELED`, and the live event cache isn't stale (TTL 5 min — wait it out, or delete the `discord_events_live` key from the `CACHE` KV namespace via `wrangler kv key delete`). |
+| `/request-event-publish` doesn't appear in Discord's slash command picker | Bot was invited without the `applications.commands` scope. Re-invite with both `bot` and `applications.commands` (URL in [Discord application](#discord-application)). After re-invite, the next CI run (or a manual `npm run register-commands`) registers the command. |
+| Saving the Interactions Endpoint URL in the Developer Portal fails | Worker must be deployed with the `/api/interactions` route live before saving the URL — Discord PINGs the endpoint and rejects the save on any failure. Check `wrangler tail` for incoming PINGs and signature-verification errors; usually means `DISCORD_PUBLIC_KEY` isn't set or has a typo. |
+| Approve/Deny buttons do nothing | Check `wrangler tail` while clicking. Most likely cause: the clicker doesn't have `ADMIN_ROLE_ID` (worker rejects with an ephemeral message) or `BOT_TOKEN` was rotated and the bot can't edit its own message. |
 | "Discord roles fetch failed: 401" in worker logs | `BOT_TOKEN` not set or rotated. |
 | `wrangler deploy` complains about Node version | Wrangler 4 needs Node ≥22. CI uses `node:22-alpine`. |
 | Manual entry box is missing in Roles Config | Intentional — the full guild role list is fetched via `/api/admin/roles`, no manual ID entry needed. |

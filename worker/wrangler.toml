@@ -13,6 +13,15 @@ ENVIRONMENT = "production"
 # URL of the deployed admin SPA. Used as the post-OAuth redirect target so
 # users land on the admin page (not the worker origin) after sign-in.
 ADMIN_URL = "http://cspiregaming.csgitpages.cspire.net/cspiregaming-workers"
+# Discord application ID — same value as DISCORD_CLIENT_ID secret, but public.
+# Used by the slash-command registration script.
+DISCORD_APP_ID = ""
+# Channel where event-publish-request approval messages get posted. Bot needs
+# View Channel + Send Messages + Embed Links permissions here.
+OFFICERS_CHANNEL_ID = ""
+# Comma-separated list of role IDs allowed to use /request-event-publish
+# (e.g. C Spire Employee + Mods). Members must hold at least one.
+REQUESTER_ROLE_IDS = ""
 
 # [[routes]]
 pattern = "cspiregaming-api.michaellamb.workers.dev"
@@ -38,3 +47,6 @@ preview_id = "REPLACE_WITH_KV_PREVIEW_ID_3"
 #   JWT_SECRET         - Random string for signing admin session JWTs
 #   DISCORD_CLIENT_ID  - Discord OAuth2 application client ID
 #   DISCORD_CLIENT_SECRET - Discord OAuth2 application client secret
+#   DISCORD_PUBLIC_KEY - Discord application Public Key (Developer Portal →
+#                        General Information). Used to verify Ed25519 signatures
+#                        on POST /api/interactions.
