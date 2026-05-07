@@ -48,6 +48,44 @@ export async function fetchGuildMembers(env, guildId, roleIds) {
   };
 }
 
+/**
+ * Fetch the guild's scheduled events. Discord returns SCHEDULED, ACTIVE, and
+ * recently-COMPLETED/CANCELED events; older completed events fall off the API.
+ */
+export async function fetchGuildScheduledEvents(env, guildId) {
+  const botToken = env.BOT_TOKEN;
+  if (!botToken) throw new Error('BOT_TOKEN secret is not configured');
+
+  const res = await discordFetch(`/guilds/${guildId}/scheduled-events`, botToken);
+  if (!res.ok) throw new Error(`Discord scheduled-events fetch failed: ${res.status}`);
+  const raw = await res.json();
+
+  return raw.map(ev => normalizeScheduledEvent(ev, guildId));
+}
+
+const DISCORD_EVENT_STATUS = {
+  1: 'SCHEDULED',
+  2: 'ACTIVE',
+  3: 'COMPLETED',
+  4: 'CANCELED',
+};
+
+export function normalizeScheduledEvent(ev, guildId) {
+  return {
+    id: ev.id,
+    title: ev.name,
+    description: ev.description || '',
+    startTime: ev.scheduled_start_time,
+    endTime: ev.scheduled_end_time || null,
+    status: DISCORD_EVENT_STATUS[ev.status] || 'SCHEDULED',
+    location: ev.entity_metadata?.location || null,
+    coverImage: ev.image
+      ? `https://cdn.discordapp.com/guild-events/${ev.id}/${ev.image}.png?size=1024`
+      : null,
+    discordUrl: `https://discord.com/events/${guildId}/${ev.id}`,
+  };
+}
+
 async function fetchAllMembers(botToken, guildId) {
   const all = [];
   let after = '0';

@@ -57,7 +57,9 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
 - **Members** — live roster pulled from Discord via the bot. Filter by role, export to CSV.
 - **Roles Config** — toggle which Discord roles appear publicly on the homepage, and pick which one (or "All Members") is selected by default when a visitor lands on the Members section. The full guild role list comes from Discord; check the ones you want shown. Saves go live within 5 minutes (or hit "Refresh Member Cache" on the dashboard to apply immediately).
 - **Officers** — manually-curated officer cards (name, photo URL, bio HTML, display order). Used by the public site's "Officers" section.
-- **Events** — manually-curated event cards (title, subtitle, description HTML, action button, optional Google Maps embed and cover image).
+- **Events** — split into two sections:
+  - **Discord Events** — live list of guild scheduled events from Discord. Toggle "Publish" to surface an event on the public site, and optionally provide a custom action button (text + URL) per event. Default action button is "View on Discord". Recent past events stay listed for 30 days after they end.
+  - **Manual Events** — hand-curated event cards (title, subtitle, description HTML, action button, optional Google Maps embed and cover image) for events that don't live in Discord.
 - **Social Links** — Discord, Twitch, Facebook, Instagram, Twitter/X, Subscribe, Outlook group, Status page URLs.
 - **Settings** — read-only view of bot/JWT secret status and the current guild. Guild ID and Admin Role ID are managed in `worker/wrangler.toml` by developers. Also has a **Sign Out** button.
 
@@ -114,8 +116,12 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 | `CONFIG` | `default_role_id` | Optional Discord role ID that should be the active filter chip on first load of the public Members section. Absent (or unset) means "All Members". |
 | `CONTENT` | `officers` | JSON array of `{id, name, image, about, order, createdAt, updatedAt?}` |
 | `CONTENT` | `events` | JSON array of `{id, title, subtitle, description, actionButtonText, actionButtonUrl, googleMapsUrl, imagePath, createdAt, updatedAt?}` |
+| `CONTENT` | `discord_event_overlays` | JSON object keyed by Discord scheduled-event ID. Each entry: `{published, actionButtonText?, actionButtonUrl?}`. Only events with `published === true` show on the public site. Empty entries are deleted. |
+| `CONTENT` | `past_discord_events` | JSON object keyed by Discord event ID, snapshotted when an event completes or disappears from Discord. Each entry is the normalized event shape plus `archivedAt`. Pruned to entries newer than 30 days every time the live cache misses. |
 | `CONTENT` | `social` | JSON object `{discord, twitch, facebook, instagram, twitter, subscribe, exchange, status}` |
 | `CACHE` | `members_<guildId>` | cached members payload, TTL 300s |
+| `CACHE` | `discord_events_live` | cached normalized list of Discord scheduled events, TTL 300s |
+| `CACHE` | `discord_events_seen` | last-seen normalized list (TTL 7 days) — used to detect events that disappeared from Discord so they can be archived |
 
 ### API reference
 
@@ -124,7 +130,7 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 | Method | Path | Notes |
 | --- | --- | --- |
 | GET | `/api/public/members` | Returns members with at least one configured role + role metadata + `defaultRoleId` (the role ID the public site should pre-select, or `null` for "All Members"). Cached 5 min. |
-| GET | `/api/public/content` | Returns `{officers, events, social}` from KV. |
+| GET | `/api/public/content` | Returns `{officers, events, social}`. `events` is a unified, time-sorted list combining published Discord events (live + recent-past archive) with manually-curated events; each entry has `source: 'discord' \| 'manual'` plus the rendering fields (`title, subtitle, description, startTime, endTime, status, location, imagePath\|coverImage, actionButtonText, actionButtonUrl, googleMapsUrl, discordUrl?`). |
 | GET | `/api/auth/discord` | 302 → Discord OAuth authorize URL. |
 | GET | `/api/auth/callback` | Discord redirects here. Sets `admin_token` cookie, redirects to `ADMIN_URL`. |
 | POST | `/api/auth/logout` | Clears the `admin_token` cookie. |
@@ -133,8 +139,10 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 | GET | `/api/admin/members` | Same as public, but bypasses cache. `?format=csv` exports CSV. |
 | GET, POST | `/api/admin/officers` | List or create. POST returns the new item with a generated `id`. |
 | GET, PUT, DELETE | `/api/admin/officers/{id}` | Read, update, or delete one officer. |
-| GET, POST | `/api/admin/events` | Same shape as officers. |
+| GET, POST | `/api/admin/events` | Manually-curated events. Same shape as officers. |
 | GET, PUT, DELETE | `/api/admin/events/{id}` |  |
+| GET | `/api/admin/discord-events` | Returns `{live, archived, overlays}`. `live` and `archived` are normalized Discord scheduled events; `overlays` is the `discord_event_overlays` map. Calling this also runs the archive/prune logic when the live cache misses (every ~5 minutes). |
+| PUT | `/api/admin/discord-events/{eventId}` | Body: `{published, actionButtonText?, actionButtonUrl?}`. Writes (or removes if all fields empty) one entry in `discord_event_overlays`. |
 | GET, PUT | `/api/admin/social` | Object stored under `CONTENT:social`. |
 
 ### Auth model
@@ -230,6 +238,8 @@ Then `npx wrangler deploy` once manually so the worker exists, after which CI ta
 | Admin sign-in lands on a 404 at `…workers.dev/admin/` | `ADMIN_URL` not set in `wrangler.toml`. |
 | 401 on every admin call right after sign-in | Cookie didn't make it cross-site. Check `SameSite=None; Secure` and that the admin SPA origin is in `ALLOWED_ORIGINS`. |
 | Members section is empty on the public site | (a) no roles configured in Roles Config, or (b) bot is missing the Server Members Intent, or (c) bot was kicked from the guild. |
+| Discord Events admin section shows nothing | (a) no scheduled events exist in the guild, or (b) the bot lacks `VIEW_CHANNEL` on the channel hosting a voice-channel event (external-location events don't need this). External-location and stage events that the bot can see are returned regardless. |
+| Published Discord event isn't appearing on the public site | Check that `published === true` for that event ID in `CONTENT:discord_event_overlays`, the event isn't `CANCELED`, and the live event cache isn't stale (TTL 5 min — wait it out, or delete the `discord_events_live` key from the `CACHE` KV namespace via `wrangler kv key delete`). |
 | "Discord roles fetch failed: 401" in worker logs | `BOT_TOKEN` not set or rotated. |
 | `wrangler deploy` complains about Node version | Wrangler 4 needs Node ≥22. CI uses `node:22-alpine`. |
 | Manual entry box is missing in Roles Config | Intentional — the full guild role list is fetched via `/api/admin/roles`, no manual ID entry needed. |

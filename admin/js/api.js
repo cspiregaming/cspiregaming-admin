@@ -66,11 +66,16 @@ export const api = {
   updateOfficer: (id, data) => apiFetch(`/api/admin/officers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteOfficer: id => apiFetch(`/api/admin/officers/${id}`, { method: 'DELETE' }),
 
-  // Events
+  // Events (manual)
   getEvents: () => apiFetch('/api/admin/events'),
   createEvent: data => apiFetch('/api/admin/events', { method: 'POST', body: JSON.stringify(data) }),
   updateEvent: (id, data) => apiFetch(`/api/admin/events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteEvent: id => apiFetch(`/api/admin/events/${id}`, { method: 'DELETE' }),
+
+  // Events (Discord)
+  getDiscordEvents: () => apiFetch('/api/admin/discord-events'),
+  putDiscordEventOverlay: (id, data) =>
+    apiFetch(`/api/admin/discord-events/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
 
   // Social
   getSocial: () => apiFetch('/api/admin/social'),

@@ -8,6 +8,7 @@ import {
   handleAdminMembers,
   handleAdminOfficers,
   handleAdminEvents,
+  handleAdminDiscordEvents,
   handleAdminSocial,
 } from './routes/admin.js';
 
@@ -69,6 +70,7 @@ async function route(request, env) {
   if (path === '/api/admin/roles') return handleAdminRoles(request, env);
   if (path === '/api/admin/members') return handleAdminMembers(request, env);
   if (path.startsWith('/api/admin/officers')) return handleAdminOfficers(request, env);
+  if (path.startsWith('/api/admin/discord-events')) return handleAdminDiscordEvents(request, env);
   if (path.startsWith('/api/admin/events')) return handleAdminEvents(request, env);
   if (path === '/api/admin/social') return handleAdminSocial(request, env);
 

@@ -1,5 +1,6 @@
 import { requireAuth, buildOAuthUrl, signJwt } from '../auth.js';
 import { discordOAuthExchange, fetchGuildMembers } from '../discord.js';
+import { getDiscordEventsWithArchive, getOverlays, setOverlay } from '../discord-events.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -185,6 +186,35 @@ export async function handleAdminOfficers(request, env) {
 export async function handleAdminEvents(request, env) {
   const session = await requireAuth(request, env);
   return handleCrudCollection(request, env, 'events');
+}
+
+export async function handleAdminDiscordEvents(request, env) {
+  await requireAuth(request, env);
+  const url = new URL(request.url);
+  const pathParts = url.pathname.split('/').filter(Boolean);
+  // /api/admin/discord-events            → pathParts[2] === 'discord-events', no id
+  // /api/admin/discord-events/{eventId}  → pathParts[3] === eventId
+  const eventId = pathParts[3] || null;
+
+  if (request.method === 'GET' && !eventId) {
+    try {
+      const [{ live, archived }, overlays] = await Promise.all([
+        getDiscordEventsWithArchive(env),
+        getOverlays(env),
+      ]);
+      return jsonResponse({ live, archived, overlays });
+    } catch (err) {
+      return jsonResponse({ error: err.message }, 502);
+    }
+  }
+
+  if (request.method === 'PUT' && eventId) {
+    const body = await request.json();
+    const overlays = await setOverlay(env, eventId, body);
+    return jsonResponse({ ok: true, overlay: overlays[eventId] || null });
+  }
+
+  return methodNotAllowed();
 }
 
 export async function handleAdminSocial(request, env) {
