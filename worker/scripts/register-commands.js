@@ -14,8 +14,11 @@
 
 const { DISCORD_APP_ID, GUILD_ID, BOT_TOKEN } = process.env;
 
-if (!DISCORD_APP_ID || !GUILD_ID || !BOT_TOKEN) {
-  console.error('Missing required env: DISCORD_APP_ID, GUILD_ID, BOT_TOKEN');
+const missing = Object.entries({ DISCORD_APP_ID, GUILD_ID, BOT_TOKEN })
+  .filter(([, v]) => !v)
+  .map(([k]) => k);
+if (missing.length) {
+  console.error(`Missing required env: ${missing.join(', ')}`);
   process.exit(1);
 }
 

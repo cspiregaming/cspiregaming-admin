@@ -15,13 +15,13 @@ ENVIRONMENT = "production"
 ADMIN_URL = "http://cspiregaming.csgitpages.cspire.net/cspiregaming-workers"
 # Discord application ID — same value as DISCORD_CLIENT_ID secret, but public.
 # Used by the slash-command registration script.
-DISCORD_APP_ID = ""
+DISCORD_APP_ID = "1002285255249625138"
 # Channel where event-publish-request approval messages get posted. Bot needs
 # View Channel + Send Messages + Embed Links permissions here.
-OFFICERS_CHANNEL_ID = ""
+OFFICERS_CHANNEL_ID = "882367325939040286"
 # Comma-separated list of role IDs allowed to use /request-event-publish
 # (e.g. C Spire Employee + Mods). Members must hold at least one.
-REQUESTER_ROLE_IDS = ""
+REQUESTER_ROLE_IDS = "379713136082550805,380805265815240705"
 
 # [[routes]]
 pattern = "cspiregaming-api.michaellamb.workers.dev"

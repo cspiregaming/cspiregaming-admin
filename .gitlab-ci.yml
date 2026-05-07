@@ -31,9 +31,11 @@ register-discord-commands:
     - node scripts/register-commands.js
   variables:
     GUILD_ID: "379707231077138442"
-  # Required CI/CD variables:
-  #   DISCORD_APP_ID  - Discord application ID (same value as DISCORD_CLIENT_ID; public)
-  #   BOT_TOKEN       - Discord bot token (already required by deploy-worker via wrangler secret)
+  # Required CI/CD variables (Settings → CI/CD → Variables in csgit):
+  #   DISCORD_APP_ID  - Discord application ID (public; safe to mark as masked but not protected)
+  #   BOT_TOKEN       - Discord bot token (masked + protected). Must be set in GitLab even though
+  #                     the worker runtime reads it as a wrangler secret — this job runs in its
+  #                     own container and gets the token from CI vars, not from Cloudflare.
 
 # Deploy Admin page to GitLab Pages (served at cspiregaming.csgitpages.cspire.net)
 pages:

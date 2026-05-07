@@ -184,7 +184,7 @@ Required CI/CD variables (Settings → CI/CD → Variables in csgit, masked + pr
 - `CLOUDFLARE_API_TOKEN` — Cloudflare token with the **Edit Cloudflare Workers** template, or manually: Account → Workers Scripts: Edit, Workers KV Storage: Edit, Account Settings: Read.
 - `CLOUDFLARE_ACCOUNT_ID` — from the Cloudflare dashboard sidebar or `npx wrangler whoami`.
 - `DISCORD_APP_ID` — Discord application ID (same value as the `DISCORD_CLIENT_ID` secret; safe to expose).
-- `BOT_TOKEN` — Discord bot token. Used by the slash-command registration job.
+- `BOT_TOKEN` — Discord bot token (masked + protected). Used by the slash-command registration job. Note: `wrangler secret put BOT_TOKEN` stores the token in **Cloudflare** for the worker runtime; the registration job runs in a separate GitLab CI container, so the token must also exist as a GitLab CI variable here.
 
 Manual deploy:
 
