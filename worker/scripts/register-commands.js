@@ -37,6 +37,16 @@ const commands = [
       },
     ],
   },
+  {
+    name: 'register-stream',
+    description: 'Get the @streamer role + auto-announce when your Twitch channel goes live',
+    dm_permission: false,
+  },
+  {
+    name: 'unregister-stream',
+    description: 'Remove the @streamer role and stop live announcements',
+    dm_permission: false,
+  },
 ];
 
 const url = `https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${GUILD_ID}/commands`;

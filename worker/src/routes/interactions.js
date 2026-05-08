@@ -17,6 +17,12 @@ import {
   editOriginalInteractionResponse,
 } from '../discord-outbound.js';
 import * as requests from '../event-publish-requests.js';
+import { buildOAuthUrl } from '../auth.js';
+import {
+  buildStreamAuthState,
+  unregisterStreamer,
+} from './streamers.js';
+import * as streamerRegistry from '../streamers.js';
 
 export async function handleInteractions(request, env, ctx) {
   if (request.method !== 'POST') {
@@ -51,9 +57,13 @@ export async function handleInteractions(request, env, ctx) {
 // ─── Autocomplete ────────────────────────────────────────────────────────────
 
 async function handleAutocomplete(interaction, env) {
-  if (interaction.data?.name !== 'request-event-publish') {
-    return jsonResponse({ type: RESPONSE_TYPE.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, data: { choices: [] } });
+  if (interaction.data?.name === 'request-event-publish') {
+    return autocompleteRequestEventPublish(interaction, env);
   }
+  return jsonResponse({ type: RESPONSE_TYPE.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT, data: { choices: [] } });
+}
+
+async function autocompleteRequestEventPublish(interaction, env) {
   const focused = (interaction.data.options || []).find(o => o.focused);
   const query = (focused?.value || '').toLowerCase();
 
@@ -88,10 +98,19 @@ async function handleAutocomplete(interaction, env) {
 // ─── Slash command ───────────────────────────────────────────────────────────
 
 async function handleCommand(interaction, env, ctx) {
-  if (interaction.data?.name !== 'request-event-publish') {
-    return ephemeralReply('Unknown command.');
+  switch (interaction.data?.name) {
+    case 'request-event-publish':
+      return commandRequestEventPublish(interaction, env, ctx);
+    case 'register-stream':
+      return commandRegisterStream(interaction, env, ctx);
+    case 'unregister-stream':
+      return commandUnregisterStream(interaction, env, ctx);
+    default:
+      return ephemeralReply('Unknown command.');
   }
+}
 
+async function commandRequestEventPublish(interaction, env, ctx) {
   const memberRoles = interaction.member?.roles || [];
   const allowedRoles = parseRoleList(env.REQUESTER_ROLE_IDS);
   if (!allowedRoles.length) {
@@ -153,7 +172,14 @@ async function submitRequestPipeline(interaction, env, event) {
   const post = await postChannelMessage(env, channelId, messagePayload);
 
   if (!post.ok || !post.json?.id) {
-    return editOriginal(interaction, env, '⚠️ Couldn\'t notify officers — ping a developer.');
+    const detail = post.status
+      ? `HTTP ${post.status}${post.json?.message ? ` — ${post.json.message}` : ''}`
+      : 'no response';
+    return editOriginal(
+      interaction,
+      env,
+      `⚠️ Couldn't notify officers (${detail}). Check that the bot has View Channel + Send Messages + Embed Links in <#${channelId}>.`,
+    );
   }
 
   try {
@@ -194,6 +220,59 @@ function buildOfficersMessage(reqId, event, requestedBy) {
       ],
     }],
   };
+}
+
+// ─── /register-stream ────────────────────────────────────────────────────────
+
+async function commandRegisterStream(interaction, env) {
+  const userId = (interaction.member?.user || interaction.user)?.id;
+  if (!userId) return ephemeralReply('Couldn\'t identify you. Try again.');
+  if (!env.DISCORD_CLIENT_ID || !env.JWT_SECRET) {
+    return ephemeralReply('Streamer registration isn\'t configured. Ping a developer.');
+  }
+
+  // OAuth redirect URI must exactly match one registered in the Discord app
+  // settings. Use the worker's stable custom domain — fall back to env override
+  // if a future deployment moves origins.
+  const origin = env.WORKER_ORIGIN || 'https://cspiregaming-api.michaellamb.workers.dev';
+  const state = await buildStreamAuthState(env, userId, interaction.token);
+  const authUrl = buildOAuthUrl(env, `${origin}/api/auth/stream-callback`, {
+    scope: 'identify connections',
+    state,
+    prompt: 'consent',
+  });
+
+  const help = [
+    '**Register as a streamer**',
+    '',
+    '1. In Discord: open **User Settings → Connections → Add** and connect your **Twitch** account (YouTube optional — saved now, live alerts coming later).',
+    '2. Click the link below to authorize the bot to read your connections.',
+    '3. The bot will give you the **@streamer** role and start watching for your channel to go live.',
+    '',
+    `🔗 **[Authorize bot](${authUrl})**  (link expires in 15 minutes)`,
+    '',
+    'Run `/unregister-stream` any time to opt back out.',
+  ].join('\n');
+
+  return ephemeralReply(help);
+}
+
+async function commandUnregisterStream(interaction, env, ctx) {
+  const userId = (interaction.member?.user || interaction.user)?.id;
+  if (!userId) return ephemeralReply('Couldn\'t identify you. Try again.');
+
+  const existing = await streamerRegistry.getByDiscordId(env, userId);
+  if (!existing) return ephemeralReply('You\'re not currently registered as a streamer.');
+
+  ctx.waitUntil((async () => {
+    await unregisterStreamer(env, userId);
+    await editOriginal(interaction, env, '✓ Unregistered. The @streamer role and live alerts have been removed.');
+  })());
+
+  return jsonResponse({
+    type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE,
+    data: { flags: FLAGS.EPHEMERAL },
+  });
 }
 
 // ─── Button click ────────────────────────────────────────────────────────────
@@ -276,7 +355,11 @@ function parseRoleList(raw) {
 function formatDate(iso) {
   if (!iso) return 'TBD';
   const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString('en-US', {
+    timeZone: 'America/Chicago',
+    month: 'short',
+    day: 'numeric',
+  });
 }
 
 function truncate(s, n) {

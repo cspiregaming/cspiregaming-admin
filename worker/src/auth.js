@@ -83,7 +83,7 @@ function getCookieValue(cookieHeader, name) {
   return match ? decodeURIComponent(match[1]) : null;
 }
 
-export function buildOAuthUrl(env, redirectUri) {
+export function buildOAuthUrl(env, redirectUri, { scope, state, prompt } = {}) {
   const clientId = env.DISCORD_CLIENT_ID;
   if (!clientId) return null;
 
@@ -91,8 +91,10 @@ export function buildOAuthUrl(env, redirectUri) {
     client_id: clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
-    scope: 'identify guilds.members.read',
+    scope: scope || 'identify guilds.members.read',
   });
+  if (state) params.set('state', state);
+  if (prompt) params.set('prompt', prompt);
 
   return `https://discord.com/api/oauth2/authorize?${params}`;
 }

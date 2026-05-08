@@ -70,6 +70,19 @@ Members with the configured requester roles (e.g. *C Spire Employee*, *Mods*) ca
 - Requests older than 30 days from their decision time are auto-pruned.
 
 If `/request-event-publish` doesn't show up in Discord, the bot is missing the `applications.commands` scope — see [Discord application](#discord-application).
+
+### Streamer registration
+
+Members can self-register as streamers from Discord:
+
+- **`/register-stream`** — replies ephemerally with brief instructions and a one-time OAuth link. The user clicks the link, authorizes the bot for the `connections` scope, and the worker reads their Twitch / YouTube connections off their Discord profile. On success the bot:
+  - assigns the **@streamer** role (`STREAMER_ROLE_ID` in `wrangler.toml`),
+  - subscribes to Twitch EventSub (`stream.online` + `stream.offline`) for that user, and
+  - DMs / follows-up the original interaction confirming they're set up.
+- **Going live** — when Twitch fires `stream.online`, the worker posts an embed in the configured `LIVE_ANNOUNCE_CHANNEL_ID`: stream title, game/category, live thumbnail, "Watch on Twitch" link, and a ping of the streamer's Discord user.
+- **`/unregister-stream`** — removes the @streamer role, deletes the Twitch EventSub subscriptions, and drops the streamer record.
+- **YouTube** — connections are saved when present, but live announcements for YouTube channels are not implemented in v1. Twitch only for now.
+- **Adding the connection** — direct streamers to **Discord User Settings → Connections → Add → Twitch** and authenticate with their Twitch account before running `/register-stream`. The bot can't read connections that aren't there yet.
 - **Social Links** — Discord, Twitch, Facebook, Instagram, Twitter/X, Subscribe, Outlook group, Status page URLs.
 - **Settings** — read-only view of bot/JWT secret status and the current guild. Guild ID and Admin Role ID are managed in `worker/wrangler.toml` by developers. Also has a **Sign Out** button.
 
@@ -129,10 +142,13 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 | `CONTENT` | `discord_event_overlays` | JSON object keyed by Discord scheduled-event ID. Each entry: `{published, actionButtonText?, actionButtonUrl?}`. Only events with `published === true` show on the public site. Empty entries are deleted. |
 | `CONTENT` | `past_discord_events` | JSON object keyed by Discord event ID, snapshotted when an event completes or disappears from Discord. Each entry is the normalized event shape plus `archivedAt`. Pruned to entries newer than 30 days every time the live cache misses. |
 | `CONTENT` | `event_publish_requests` | JSON object keyed by Discord interaction ID. Each entry: `{id, eventId, requestedBy, requestedAt, status: 'pending'\|'approved'\|'denied', channelId, channelMessageId, decidedBy?, decidedAt?, downgradeReason?}`. Pruned 30 days after `decidedAt`. |
+| `CONTENT` | `streamers` | JSON object keyed by Discord user ID. Each entry: `{discordId, discordUsername, displayName, registeredAt, updatedAt, twitch?: {userId, login, displayName, eventSubIds: {online, offline}}, youtube?: {channelId, name}}`. Written by the `/register-stream` OAuth callback; deleted by `/unregister-stream`. |
+| `CONTENT` | `streamers_by_twitch` | JSON object keyed by Twitch user ID → Discord user ID. Reverse index used by the EventSub webhook to resolve incoming `stream.online` notifications back to a streamer record. |
 | `CONTENT` | `social` | JSON object `{discord, twitch, facebook, instagram, twitter, subscribe, exchange, status}` |
 | `CACHE` | `members_<guildId>` | cached members payload, TTL 300s |
 | `CACHE` | `discord_events_live` | cached normalized list of Discord scheduled events, TTL 300s |
 | `CACHE` | `discord_events_seen` | last-seen normalized list (TTL 7 days) — used to detect events that disappeared from Discord so they can be archived |
+| `CACHE` | `twitch_app_token` | Twitch app access token (client_credentials grant), TTL = Twitch's `expires_in` minus 5 minutes. |
 
 ### API reference
 
@@ -140,7 +156,9 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| POST | `/api/interactions` | Discord interactions endpoint. Verifies Ed25519 signatures via `DISCORD_PUBLIC_KEY`. Handles PING, slash commands (`/request-event-publish`), button clicks (Approve/Deny on the officers-channel post), and autocomplete. Discord-only — not called by the SPA or public site. |
+| POST | `/api/interactions` | Discord interactions endpoint. Verifies Ed25519 signatures via `DISCORD_PUBLIC_KEY`. Handles PING, slash commands (`/request-event-publish`, `/register-stream`, `/unregister-stream`), button clicks (Approve/Deny on the officers-channel post), and autocomplete. Discord-only — not called by the SPA or public site. |
+| GET | `/api/auth/stream-callback` | OAuth callback for `/register-stream`. Verifies the JWT state token, exchanges the code for a Discord access token, reads `/users/@me/connections`, then asynchronously creates Twitch EventSub subscriptions, assigns the `@streamer` role, and follows up to the original interaction. Returns a static success page. |
+| POST | `/api/twitch/eventsub` | Twitch EventSub webhook. Verifies HMAC-SHA256 signatures with `TWITCH_EVENTSUB_SECRET`. Handles the one-time `webhook_callback_verification` challenge plus `notification` (posts the live embed for `stream.online`) and `revocation` (logs only). |
 | GET | `/api/public/members` | Returns members with at least one configured role + role metadata + `defaultRoleId` (the role ID the public site should pre-select, or `null` for "All Members"). Cached 5 min. |
 | GET | `/api/public/content` | Returns `{officers, events, social}`. `events` is a unified, time-sorted list combining published Discord events (live + recent-past archive) with manually-curated events; each entry has `source: 'discord' \| 'manual'` plus the rendering fields (`title, subtitle, description, startTime, endTime, status, location, imagePath\|coverImage, actionButtonText, actionButtonUrl, googleMapsUrl, discordUrl?`). |
 | GET | `/api/auth/discord` | 302 → Discord OAuth authorize URL. |
@@ -211,12 +229,26 @@ To add, say, a "FAQ" section managed from the admin and exposed publicly:
 The bot and OAuth app live in the same Discord application at https://discord.com/developers/applications.
 
 - **Bot tab** — enable the **Server Members Intent** (privileged). Without it, member fetching fails silently with empty results.
-- **OAuth2 → Redirects** — register `https://cspiregaming-api.michaellamb.workers.dev/api/auth/callback` *exactly*. If this isn't there, every authorize request fails with "invalid redirect_uri" before reaching the worker.
+- **OAuth2 → Redirects** — register both of these URLs *exactly*:
+  - `https://cspiregaming-api.michaellamb.workers.dev/api/auth/callback` (admin sign-in)
+  - `https://cspiregaming-api.michaellamb.workers.dev/api/auth/stream-callback` (`/register-stream`)
+  If either isn't registered, the corresponding flow fails with "invalid redirect_uri" before reaching the worker.
 - **General Information → Interactions Endpoint URL** — set to `https://cspiregaming-api.michaellamb.workers.dev/api/interactions`. Discord PINGs the endpoint when you save the URL; the worker must already be deployed with the route live, or the save will fail with a verification error.
 - **General Information → Public Key** — copy this into the `DISCORD_PUBLIC_KEY` secret (`wrangler secret put DISCORD_PUBLIC_KEY`). Used to verify Ed25519 signatures on every interaction request.
 - **Bot → Reset Token / Generate** if you need to rotate the bot token. Then run `wrangler secret put BOT_TOKEN`.
 - The bot must be invited to guild `379707231077138442` with **both** the `bot` and `applications.commands` scopes. Without `applications.commands`, slash commands silently won't appear in the picker. Re-invite URL: `https://discord.com/oauth2/authorize?client_id=<DISCORD_APP_ID>&scope=bot+applications.commands&permissions=0`.
-- Bot must have **View Server Members** for the members feature, and **View Channel + Send Messages + Embed Links** in the channel referenced by `OFFICERS_CHANNEL_ID` for the publish-request flow.
+- Bot must have **View Server Members** for the members feature, and **View Channel + Send Messages + Embed Links** in the channels referenced by `OFFICERS_CHANNEL_ID` (publish-request flow) and `LIVE_ANNOUNCE_CHANNEL_ID` (Twitch live announcements).
+- Bot needs **Manage Roles** in the guild, with the `@streamer` role positioned *below* the bot's highest role, so `/register-stream` can grant it.
+
+### Twitch application
+
+The streamer flow requires a Twitch app on https://dev.twitch.tv/console/apps:
+
+- **Register Your Application** — name (e.g. "C Spire Gaming Live Watcher"), OAuth Redirect URLs `https://localhost` (unused — we only use client_credentials), Category "Application Integration".
+- Copy the **Client ID** into `wrangler secret put TWITCH_CLIENT_ID`.
+- **New Secret** → copy into `wrangler secret put TWITCH_CLIENT_SECRET`.
+- Generate a random ≥10-char string (`openssl rand -hex 32`) and put it into `wrangler secret put TWITCH_EVENTSUB_SECRET`. This is the shared HMAC secret for all EventSub subscriptions; rotating it requires re-creating every subscription, so leave it stable.
+- The worker creates EventSub subscriptions per registered streamer; you don't need to configure anything per-channel in the Twitch console. Subscriptions are visible at `https://dev.twitch.tv/console/apps/<your-app>/eventsub`.
 
 ### First-time Cloudflare setup
 
@@ -242,9 +274,12 @@ npx wrangler secret put JWT_SECRET             # any random string: openssl rand
 npx wrangler secret put DISCORD_CLIENT_ID      # Discord OAuth2 application client ID
 npx wrangler secret put DISCORD_CLIENT_SECRET  # Discord OAuth2 application client secret
 npx wrangler secret put DISCORD_PUBLIC_KEY     # Discord application Public Key (Developer Portal → General Information)
+npx wrangler secret put TWITCH_CLIENT_ID       # Twitch app Client ID (dev.twitch.tv → Apps)
+npx wrangler secret put TWITCH_CLIENT_SECRET   # Twitch app Client Secret
+npx wrangler secret put TWITCH_EVENTSUB_SECRET # Random ≥10-char string: openssl rand -hex 32
 ```
 
-Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, and `REQUESTER_ROLE_IDS` (comma list of Discord role IDs allowed to use `/request-event-publish`).
+Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, `REQUESTER_ROLE_IDS`, `STREAMER_ROLE_ID`, and `LIVE_ANNOUNCE_CHANNEL_ID`.
 
 Then `npx wrangler deploy` once manually so the worker exists, after which CI takes over.
 
@@ -266,6 +301,10 @@ Then `npx wrangler deploy` once manually so the worker exists, after which CI ta
 | Discord Events admin section shows nothing | (a) no scheduled events exist in the guild, or (b) the bot lacks `VIEW_CHANNEL` on the channel hosting a voice-channel event (external-location events don't need this). External-location and stage events that the bot can see are returned regardless. |
 | Published Discord event isn't appearing on the public site | Check that `published === true` for that event ID in `CONTENT:discord_event_overlays`, the event isn't `CANCELED`, and the live event cache isn't stale (TTL 5 min — wait it out, or delete the `discord_events_live` key from the `CACHE` KV namespace via `wrangler kv key delete`). |
 | `/request-event-publish` doesn't appear in Discord's slash command picker | Bot was invited without the `applications.commands` scope. Re-invite with both `bot` and `applications.commands` (URL in [Discord application](#discord-application)). After re-invite, the next CI run (or a manual `npm run register-commands`) registers the command. |
+| `/register-stream` returns "Link expired" or "User mismatch" | OAuth state JWT is signed with `JWT_SECRET`; rotating it invalidates outstanding links. User mismatch means the user signed into Discord as a different account than the one that ran the slash command — re-run the command from the right account. |
+| `/register-stream` says "No streaming connections found" | The user hasn't added Twitch (or YouTube) under Discord User Settings → Connections yet. Have them add the connection and re-run the command. |
+| User registered but Twitch live announcements don't post | Check `wrangler tail` while triggering a real go-live (Twitch's "Test Notification" buttons in the dev console don't fire HMAC-signed webhooks). Likely causes: `LIVE_ANNOUNCE_CHANNEL_ID` unset or wrong; bot lacks Send Messages/Embed Links in that channel; EventSub subscription was revoked (visible in `dev.twitch.tv → Apps → EventSub`). |
+| Twitch EventSub subscription stuck in `webhook_callback_verification_pending` | Worker isn't responding to the challenge within 10s. Check that the worker is deployed with `/api/twitch/eventsub` live, and `TWITCH_EVENTSUB_SECRET` matches what was used when the subscription was created. |
 | Saving the Interactions Endpoint URL in the Developer Portal fails | Worker must be deployed with the `/api/interactions` route live before saving the URL — Discord PINGs the endpoint and rejects the save on any failure. Check `wrangler tail` for incoming PINGs and signature-verification errors; usually means `DISCORD_PUBLIC_KEY` isn't set or has a typo. |
 | Approve/Deny buttons do nothing | Check `wrangler tail` while clicking. Most likely cause: the clicker doesn't have `ADMIN_ROLE_ID` (worker rejects with an ephemeral message) or `BOT_TOKEN` was rotated and the bot can't edit its own message. |
 | "Discord roles fetch failed: 401" in worker logs | `BOT_TOKEN` not set or rotated. |

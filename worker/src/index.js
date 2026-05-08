@@ -12,6 +12,10 @@ import {
   handleAdminSocial,
 } from './routes/admin.js';
 import { handleInteractions } from './routes/interactions.js';
+import {
+  handleStreamAuthCallback,
+  handleTwitchEventSub,
+} from './routes/streamers.js';
 
 const ALLOWED_ORIGINS = [
   'https://cspiregaming.github.io',
@@ -68,6 +72,10 @@ async function route(request, env, ctx) {
   if (path === '/api/auth/discord') return handleAuthDiscord(request, env);
   if (path === '/api/auth/callback') return handleAuthCallback(request, env);
   if (path === '/api/auth/logout') return handleAuthLogout(request, env);
+  if (path === '/api/auth/stream-callback') return handleStreamAuthCallback(request, env, ctx);
+
+  // Twitch EventSub webhook
+  if (path === '/api/twitch/eventsub') return handleTwitchEventSub(request, env, ctx);
 
   // Admin routes
   if (path === '/api/admin/config') return handleAdminConfig(request, env);

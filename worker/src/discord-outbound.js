@@ -22,6 +22,14 @@ export async function editOriginalInteractionResponse(env, applicationId, intera
   return discordRequest(env, 'PATCH', `/webhooks/${applicationId}/${interactionToken}/messages/@original`, payload);
 }
 
+export async function addGuildMemberRole(env, guildId, userId, roleId) {
+  return discordRequest(env, 'PUT', `/guilds/${guildId}/members/${userId}/roles/${roleId}`, null);
+}
+
+export async function removeGuildMemberRole(env, guildId, userId, roleId) {
+  return discordRequest(env, 'DELETE', `/guilds/${guildId}/members/${userId}/roles/${roleId}`, null);
+}
+
 async function discordRequest(env, method, path, payload) {
   const botToken = env.BOT_TOKEN;
   if (!botToken) {

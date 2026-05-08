@@ -22,6 +22,16 @@ OFFICERS_CHANNEL_ID = "882367325939040286"
 # Comma-separated list of role IDs allowed to use /request-event-publish
 # (e.g. C Spire Employee + Mods). Members must hold at least one.
 REQUESTER_ROLE_IDS = "379713136082550805,380805265815240705"
+# Role automatically granted to members who run /register-stream and complete
+# the connections OAuth flow.
+STREAMER_ROLE_ID = "REPLACE_WITH_STREAMER_ROLE_ID"
+# Channel where Twitch live announcements get posted. Bot needs View Channel +
+# Send Messages + Embed Links here.
+LIVE_ANNOUNCE_CHANNEL_ID = "REPLACE_WITH_LIVE_ANNOUNCE_CHANNEL_ID"
+# Optional override for the worker's public origin. Used to build the OAuth
+# redirect URI for /register-stream and the Twitch EventSub callback URL.
+# Defaults to https://cspiregaming-api.michaellamb.workers.dev.
+# WORKER_ORIGIN = "https://api.cspiregaming.com"
 
 # [[routes]]
 pattern = "cspiregaming-api.michaellamb.workers.dev"
@@ -44,9 +54,18 @@ preview_id = "REPLACE_WITH_KV_PREVIEW_ID_3"
 
 # Secrets (set via `wrangler secret put <KEY>`, never committed):
 #   BOT_TOKEN          - Discord bot token (GuildMembers intent required)
-#   JWT_SECRET         - Random string for signing admin session JWTs
+#   JWT_SECRET         - Random string for signing admin session JWTs and
+#                        /register-stream OAuth state tokens.
 #   DISCORD_CLIENT_ID  - Discord OAuth2 application client ID
 #   DISCORD_CLIENT_SECRET - Discord OAuth2 application client secret
 #   DISCORD_PUBLIC_KEY - Discord application Public Key (Developer Portal →
 #                        General Information). Used to verify Ed25519 signatures
 #                        on POST /api/interactions.
+#   TWITCH_CLIENT_ID         - Twitch app Client ID (dev.twitch.tv → Apps).
+#   TWITCH_CLIENT_SECRET     - Twitch app Client Secret. Used for the
+#                              client_credentials grant that authorizes Helix
+#                              + EventSub calls.
+#   TWITCH_EVENTSUB_SECRET   - Random ≥10-char string. Shared HMAC secret used
+#                              when creating EventSub subscriptions; the
+#                              webhook handler verifies notification signatures
+#                              with it.

@@ -124,7 +124,7 @@ export async function applyDecision(env, id, status, decidedBy) {
   // outcome where they decided.
   if (req.channelId && req.channelMessageId) {
     const verb = finalStatus === 'approved' ? 'Approved' : 'Denied';
-    const decidedTime = new Date(map[id].decidedAt).toUTCString();
+    const decidedTime = formatCentral(map[id].decidedAt);
     const footer = downgradeReason
       ? `**${verb} (${downgradeReason})** at ${decidedTime}`
       : `**${verb}** by ${escapeMarkdown(finalDecidedBy.displayName || finalDecidedBy.id)} · ${decidedTime}`;
@@ -140,4 +140,21 @@ export async function applyDecision(env, id, status, decidedBy) {
 
 function escapeMarkdown(s) {
   return String(s).replace(/[*_`~|\\]/g, ch => '\\' + ch);
+}
+
+function formatCentral(iso) {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short',
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZoneName: 'short',
+  }).formatToParts(d);
+  const get = type => parts.find(p => p.type === type)?.value || '';
+  return `${get('weekday')}, ${get('day')} ${get('month')} ${get('year')} ${get('hour')}:${get('minute')} ${get('timeZoneName')}`;
 }
