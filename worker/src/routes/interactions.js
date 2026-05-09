@@ -23,6 +23,7 @@ import {
   unregisterStreamer,
 } from './streamers.js';
 import * as streamerRegistry from '../streamers.js';
+import { getParrotPool, buildParrotGrid } from '../parrotbomb.js';
 
 export async function handleInteractions(request, env, ctx) {
   if (request.method !== 'POST') {
@@ -105,6 +106,8 @@ async function handleCommand(interaction, env, ctx) {
       return commandRegisterStream(interaction, env, ctx);
     case 'unregister-stream':
       return commandUnregisterStream(interaction, env, ctx);
+    case 'parrotbomb':
+      return commandParrotBomb(interaction, env, ctx);
     default:
       return ephemeralReply('Unknown command.');
   }
@@ -273,6 +276,36 @@ async function commandUnregisterStream(interaction, env, ctx) {
     type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE,
     data: { flags: FLAGS.EPHEMERAL },
   });
+}
+
+// ─── /parrotbomb ─────────────────────────────────────────────────────────────
+
+async function commandParrotBomb(interaction, env, ctx) {
+  const user = interaction.member?.user || interaction.user;
+  const displayName = interaction.member?.nick || user?.global_name || user?.username || 'someone';
+
+  // Fire-and-forget: fetch parrots, edit the deferred public reply.
+  ctx.waitUntil((async () => {
+    const pool = await getParrotPool(env);
+    if (!pool.length) {
+      return editOriginal(
+        interaction,
+        env,
+        `${escapeMarkdown(displayName)} tried to set off a parrotBomb(); — but the parrot armory is empty 🦜`,
+      );
+    }
+    const grid = buildParrotGrid(pool);
+    const header = `**${escapeMarkdown(displayName)}** set off a \`parrotBomb();\``;
+    return editOriginal(interaction, env, `${header}\n\n${grid}`);
+  })());
+
+  // Deferred PUBLIC message — everyone in the channel sees the bomb when it
+  // resolves. No FLAGS.EPHEMERAL.
+  return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE });
+}
+
+function escapeMarkdown(s) {
+  return String(s).replace(/[*_`~|\\]/g, ch => '\\' + ch);
 }
 
 // ─── Button click ────────────────────────────────────────────────────────────

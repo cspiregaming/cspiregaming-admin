@@ -49,6 +49,27 @@ export async function fetchGuildMembers(env, guildId, roleIds) {
 }
 
 /**
+ * Fetch the guild's custom emoji list, cached 1 hour. Each entry is the raw
+ * Discord shape: `{id, name, animated, available, ...}`. Bots can use any
+ * emoji from any guild they're in, so callers building message content can
+ * format `<a:name:id>` (animated) or `<:name:id>` (static) directly.
+ */
+const EMOJI_CACHE_TTL = 60 * 60; // 1 hour
+export async function fetchGuildEmojis(env, guildId) {
+  const cacheKey = `guild_emojis_${guildId}`;
+  const cached = await env.CACHE.get(cacheKey, 'json');
+  if (cached) return cached;
+
+  const botToken = env.BOT_TOKEN;
+  if (!botToken) throw new Error('BOT_TOKEN secret is not configured');
+  const res = await discordFetch(`/guilds/${guildId}/emojis`, botToken);
+  if (!res.ok) throw new Error(`Discord guild emojis fetch failed: ${res.status}`);
+  const emojis = await res.json();
+  await env.CACHE.put(cacheKey, JSON.stringify(emojis), { expirationTtl: EMOJI_CACHE_TTL });
+  return emojis;
+}
+
+/**
  * Fetch the guild's scheduled events. Discord returns SCHEDULED, ACTIVE, and
  * recently-COMPLETED/CANCELED events; older completed events fall off the API.
  */

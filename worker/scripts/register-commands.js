@@ -47,6 +47,11 @@ const commands = [
     description: 'Remove the @streamer role and stop live announcements',
     dm_permission: false,
   },
+  {
+    name: 'parrotbomb',
+    description: 'Set off a parrotBomb();',
+    dm_permission: false,
+  },
 ];
 
 const url = `https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${GUILD_ID}/commands`;
