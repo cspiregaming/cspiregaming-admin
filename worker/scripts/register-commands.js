@@ -52,6 +52,32 @@ const commands = [
     description: 'Set off a parrotBomb();',
     dm_permission: false,
   },
+  {
+    name: 'streamer-list',
+    description: 'List all members registered with the bot for live announcements (mods+ only)',
+    dm_permission: false,
+  },
+  {
+    name: 'streamer-remove',
+    description: 'Deregister a streamer from live announcements (mods+ only)',
+    dm_permission: false,
+    options: [
+      {
+        name: 'user',
+        description: 'The streamer to deregister',
+        type: 6, // USER
+        required: true,
+      },
+      {
+        name: 'reason',
+        description: 'Why are you removing this streamer? (logged in officers channel)',
+        type: 3, // STRING
+        required: true,
+        min_length: 10,
+        max_length: 500,
+      },
+    ],
+  },
 ];
 
 const url = `https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${GUILD_ID}/commands`;

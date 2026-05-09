@@ -22,6 +22,11 @@ OFFICERS_CHANNEL_ID = "882367325939040286"
 # Comma-separated list of role IDs allowed to use /request-event-publish
 # (e.g. C Spire Employee + Mods). Members must hold at least one.
 REQUESTER_ROLE_IDS = "379713136082550805,380805265815240705"
+# Comma-separated list of role IDs allowed to run mod-only streamer admin
+# commands (/streamer-list, /streamer-remove). ADMIN_ROLE_ID always passes
+# this check too — officers don't need to be listed here. Members must hold
+# at least one MOD_ROLE_IDS role OR the ADMIN_ROLE_ID role.
+MOD_ROLE_IDS = "REPLACE_WITH_MOD_ROLE_ID"
 # Role automatically granted to members who run /register-stream and complete
 # the connections OAuth flow.
 STREAMER_ROLE_ID = "REPLACE_WITH_STREAMER_ROLE_ID"

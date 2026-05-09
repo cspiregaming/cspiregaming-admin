@@ -108,9 +108,25 @@ async function handleCommand(interaction, env, ctx) {
       return commandUnregisterStream(interaction, env, ctx);
     case 'parrotbomb':
       return commandParrotBomb(interaction, env, ctx);
+    case 'streamer-list':
+      return commandStreamerList(interaction, env, ctx);
+    case 'streamer-remove':
+      return commandStreamerRemove(interaction, env, ctx);
     default:
       return ephemeralReply('Unknown command.');
   }
+}
+
+/**
+ * Mod-tier permission check used by /streamer-list and /streamer-remove.
+ * Passes if the actor holds any role in MOD_ROLE_IDS or holds ADMIN_ROLE_ID
+ * (officers always qualify — no need to duplicate them in MOD_ROLE_IDS).
+ */
+function actorIsMod(interaction, env) {
+  const memberRoles = interaction.member?.roles || [];
+  const modRoles = parseRoleList(env.MOD_ROLE_IDS);
+  if (env.ADMIN_ROLE_ID && memberRoles.includes(env.ADMIN_ROLE_ID)) return true;
+  return memberRoles.some(r => modRoles.includes(r));
 }
 
 async function commandRequestEventPublish(interaction, env, ctx) {
@@ -276,6 +292,133 @@ async function commandUnregisterStream(interaction, env, ctx) {
     type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE,
     data: { flags: FLAGS.EPHEMERAL },
   });
+}
+
+// ─── /streamer-list (mod+) ───────────────────────────────────────────────────
+
+async function commandStreamerList(interaction, env) {
+  if (!actorIsMod(interaction, env)) {
+    return ephemeralReply('Only mods and officers can run this command.');
+  }
+  const all = await streamerRegistry.getAll(env);
+  const records = Object.values(all).sort((a, b) => (a.displayName || '').localeCompare(b.displayName || ''));
+  if (!records.length) {
+    return ephemeralReply('No streamers are currently registered.');
+  }
+  const cap = 25;
+  const visible = records.slice(0, cap);
+  const lines = visible.map(r => {
+    const tw = r.twitch ? `Twitch: \`${r.twitch.login}\`` : null;
+    const yt = r.youtube ? `YouTube: \`${r.youtube.name}\`` : null;
+    const platforms = [tw, yt].filter(Boolean).join(' · ') || 'no platforms';
+    return `• <@${r.discordId}> — ${platforms}`;
+  });
+  if (records.length > cap) {
+    lines.push(`…and ${records.length - cap} more.`);
+  }
+  return ephemeralReply(`**Registered streamers (${records.length})**\n\n${lines.join('\n')}`);
+}
+
+// ─── /streamer-remove (mod+) ─────────────────────────────────────────────────
+
+async function commandStreamerRemove(interaction, env, ctx) {
+  if (!actorIsMod(interaction, env)) {
+    return ephemeralReply('Only mods and officers can run this command.');
+  }
+
+  const opts = interaction.data.options || [];
+  const targetId = opts.find(o => o.name === 'user')?.value;
+  const reason = (opts.find(o => o.name === 'reason')?.value || '').trim();
+
+  if (!targetId) return ephemeralReply('Pick a user to deregister.');
+  if (reason.length < 10) return ephemeralReply('Provide a reason (at least 10 characters).');
+
+  const existing = await streamerRegistry.getByDiscordId(env, targetId);
+  if (!existing) {
+    return ephemeralReply(`<@${targetId}> isn't currently registered as a streamer.`);
+  }
+
+  const actor = interaction.member?.user || interaction.user;
+  const actorName = interaction.member?.nick || actor?.global_name || actor?.username || actor?.id;
+
+  // Capture the platform info before unregistering — the helper drops the KV
+  // record before returning, so we'd lose it for the audit log.
+  const removed = {
+    twitchLogin: existing.twitch?.login || null,
+    youtubeName: existing.youtube?.name || null,
+    targetName: existing.displayName || existing.discordUsername || targetId,
+  };
+
+  ctx.waitUntil((async () => {
+    await unregisterStreamer(env, targetId);
+    await postAuditLog(env, {
+      actorId: actor?.id,
+      actorName,
+      targetId,
+      targetName: removed.targetName,
+      twitchLogin: removed.twitchLogin,
+      youtubeName: removed.youtubeName,
+      reason,
+    });
+    await editOriginal(
+      interaction,
+      env,
+      `✓ Deregistered <@${targetId}>. The audit log has been posted to the officers channel.`,
+    );
+  })());
+
+  return jsonResponse({
+    type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE,
+    data: { flags: FLAGS.EPHEMERAL },
+  });
+}
+
+async function postAuditLog(env, info) {
+  const channelId = env.OFFICERS_CHANNEL_ID;
+  if (!channelId) {
+    console.error('streamer-remove: OFFICERS_CHANNEL_ID not set; audit log dropped');
+    return;
+  }
+  const platforms = [];
+  if (info.twitchLogin) platforms.push({ name: 'Twitch', value: `\`${info.twitchLogin}\``, inline: true });
+  if (info.youtubeName) platforms.push({ name: 'YouTube', value: `\`${info.youtubeName}\``, inline: true });
+
+  const ts = formatCentral(new Date().toISOString());
+
+  await postChannelMessage(env, channelId, {
+    embeds: [{
+      title: 'Streamer deregistered',
+      color: 0xE07B00,
+      fields: [
+        { name: 'Removed', value: `<@${info.targetId}> (${escapeMd(info.targetName)})`, inline: false },
+        { name: 'By', value: `<@${info.actorId}> (${escapeMd(info.actorName)})`, inline: false },
+        ...platforms,
+        { name: 'Reason', value: truncate(info.reason, 1000), inline: false },
+      ],
+      footer: { text: ts },
+    }],
+  });
+}
+
+function formatCentral(iso) {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short',
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZoneName: 'short',
+  }).formatToParts(d);
+  const get = type => parts.find(p => p.type === type)?.value || '';
+  return `${get('weekday')}, ${get('day')} ${get('month')} ${get('year')} ${get('hour')}:${get('minute')} ${get('timeZoneName')}`;
+}
+
+function escapeMd(s) {
+  return String(s).replace(/[*_`~|\\]/g, ch => '\\' + ch);
 }
 
 // ─── /parrotbomb ─────────────────────────────────────────────────────────────

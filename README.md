@@ -81,6 +81,9 @@ Members can self-register as streamers from Discord:
   - DMs / follows-up the original interaction confirming they're set up.
 - **Going live** — when Twitch fires `stream.online`, the worker posts an embed in the configured `LIVE_ANNOUNCE_CHANNEL_ID`: stream title, game/category, live thumbnail, "Watch on Twitch" link, and a ping of the streamer's Discord user.
 - **`/unregister-stream`** — removes the @streamer role, deletes the Twitch EventSub subscriptions, and drops the streamer record.
+- **`/streamer-list`** *(mods+)* — ephemeral list of every member registered with the bot, including their Twitch login and YouTube channel name. Capped at 25 entries with an overflow note.
+- **`/streamer-remove user reason`** *(mods+)* — deregisters someone else's streamer record. The `reason` field is required (≥10 chars) and gets posted as an audit-log embed in `OFFICERS_CHANNEL_ID` along with who acted, who was removed, what platforms they had connected, and a Central-Time timestamp. Reuses the same teardown path as `/unregister-stream` (KV record + EventSub subs + @streamer role all dropped).
+  - **Permission:** member must hold any role in `MOD_ROLE_IDS` (comma list in `wrangler.toml`) or hold `ADMIN_ROLE_ID`. Officers always pass.
 - **YouTube** — connections are saved when present, but live announcements for YouTube channels are not implemented in v1. Twitch only for now.
 - **Adding the connection** — direct streamers to **Discord User Settings → Connections → Add → Twitch** and authenticate with their Twitch account before running `/register-stream`. The bot can't read connections that aren't there yet.
 - **Social Links** — Discord, Twitch, Facebook, Instagram, Twitter/X, Subscribe, Outlook group, Status page URLs.
@@ -156,7 +159,7 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| POST | `/api/interactions` | Discord interactions endpoint. Verifies Ed25519 signatures via `DISCORD_PUBLIC_KEY`. Handles PING, slash commands (`/request-event-publish`, `/register-stream`, `/unregister-stream`), button clicks (Approve/Deny on the officers-channel post), and autocomplete. Discord-only — not called by the SPA or public site. |
+| POST | `/api/interactions` | Discord interactions endpoint. Verifies Ed25519 signatures via `DISCORD_PUBLIC_KEY`. Handles PING, slash commands (`/request-event-publish`, `/register-stream`, `/unregister-stream`, `/streamer-list`, `/streamer-remove`, `/parrotbomb`), button clicks (Approve/Deny on the officers-channel post), and autocomplete. Discord-only — not called by the SPA or public site. |
 | GET | `/api/auth/stream-callback` | OAuth callback for `/register-stream`. Verifies the JWT state token, exchanges the code for a Discord access token, reads `/users/@me/connections`, then asynchronously creates Twitch EventSub subscriptions, assigns the `@streamer` role, and follows up to the original interaction. Returns a static success page. |
 | POST | `/api/twitch/eventsub` | Twitch EventSub webhook. Verifies HMAC-SHA256 signatures with `TWITCH_EVENTSUB_SECRET`. Handles the one-time `webhook_callback_verification` challenge plus `notification` (posts the live embed for `stream.online`) and `revocation` (logs only). |
 | GET | `/api/public/members` | Returns members with at least one configured role + role metadata + `defaultRoleId` (the role ID the public site should pre-select, or `null` for "All Members"). Cached 5 min. |
@@ -279,7 +282,7 @@ npx wrangler secret put TWITCH_CLIENT_SECRET   # Twitch app Client Secret
 npx wrangler secret put TWITCH_EVENTSUB_SECRET # Random ≥10-char string: openssl rand -hex 32
 ```
 
-Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, `REQUESTER_ROLE_IDS`, `STREAMER_ROLE_ID`, and `LIVE_ANNOUNCE_CHANNEL_ID`.
+Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, `REQUESTER_ROLE_IDS`, `MOD_ROLE_IDS`, `STREAMER_ROLE_ID`, and `LIVE_ANNOUNCE_CHANNEL_ID`.
 
 Then `npx wrangler deploy` once manually so the worker exists, after which CI takes over.
 
