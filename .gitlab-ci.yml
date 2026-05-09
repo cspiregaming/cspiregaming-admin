@@ -11,7 +11,7 @@ deploy-worker:
     - npx wrangler deploy
   environment:
     name: production
-    url: https://cspiregaming-api.michaellamb.workers.dev
+    url: https://api.cspiregaming.com
   only:
     - main
   # Required CI/CD variables (set in GitLab project settings, not committed):

@@ -4,7 +4,7 @@ Backend API and admin console for [cspiregaming.github.io](https://cspiregaming.
 
 - **Public site:** https://cspiregaming.github.io
 - **Admin console:** http://cspiregaming.csgitpages.cspire.net/cspiregaming-workers/
-- **Worker API:** https://cspiregaming-api.michaellamb.workers.dev
+- **Worker API:** https://api.cspiregaming.com
 
 ---
 
@@ -230,10 +230,10 @@ The bot and OAuth app live in the same Discord application at https://discord.co
 
 - **Bot tab** — enable the **Server Members Intent** (privileged). Without it, member fetching fails silently with empty results.
 - **OAuth2 → Redirects** — register both of these URLs *exactly*:
-  - `https://cspiregaming-api.michaellamb.workers.dev/api/auth/callback` (admin sign-in)
-  - `https://cspiregaming-api.michaellamb.workers.dev/api/auth/stream-callback` (`/register-stream`)
+  - `https://api.cspiregaming.com/api/auth/callback` (admin sign-in)
+  - `https://api.cspiregaming.com/api/auth/stream-callback` (`/register-stream`)
   If either isn't registered, the corresponding flow fails with "invalid redirect_uri" before reaching the worker.
-- **General Information → Interactions Endpoint URL** — set to `https://cspiregaming-api.michaellamb.workers.dev/api/interactions`. Discord PINGs the endpoint when you save the URL; the worker must already be deployed with the route live, or the save will fail with a verification error.
+- **General Information → Interactions Endpoint URL** — set to `https://api.cspiregaming.com/api/interactions`. Discord PINGs the endpoint when you save the URL; the worker must already be deployed with the route live, or the save will fail with a verification error.
 - **General Information → Public Key** — copy this into the `DISCORD_PUBLIC_KEY` secret (`wrangler secret put DISCORD_PUBLIC_KEY`). Used to verify Ed25519 signatures on every interaction request.
 - **Bot → Reset Token / Generate** if you need to rotate the bot token. Then run `wrangler secret put BOT_TOKEN`.
 - The bot must be invited to guild `379707231077138442` with **both** the `bot` and `applications.commands` scopes. Without `applications.commands`, slash commands silently won't appear in the picker. Re-invite URL: `https://discord.com/oauth2/authorize?client_id=<DISCORD_APP_ID>&scope=bot+applications.commands&permissions=0`.

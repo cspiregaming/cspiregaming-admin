@@ -30,12 +30,12 @@ STREAMER_ROLE_ID = "REPLACE_WITH_STREAMER_ROLE_ID"
 LIVE_ANNOUNCE_CHANNEL_ID = "REPLACE_WITH_LIVE_ANNOUNCE_CHANNEL_ID"
 # Optional override for the worker's public origin. Used to build the OAuth
 # redirect URI for /register-stream and the Twitch EventSub callback URL.
-# Defaults to https://cspiregaming-api.michaellamb.workers.dev.
+# Defaults to https://api.cspiregaming.com.
 # WORKER_ORIGIN = "https://api.cspiregaming.com"
 
-# [[routes]]
-pattern = "cspiregaming-api.michaellamb.workers.dev"
-custom_domain = true
+routes = [
+  { pattern = "api.cspiregaming.com", custom_domain = true },
+]
 
 [[kv_namespaces]]
 binding = "CONFIG"

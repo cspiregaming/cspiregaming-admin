@@ -234,7 +234,7 @@ async function commandRegisterStream(interaction, env) {
   // OAuth redirect URI must exactly match one registered in the Discord app
   // settings. Use the worker's stable custom domain — fall back to env override
   // if a future deployment moves origins.
-  const origin = env.WORKER_ORIGIN || 'https://cspiregaming-api.michaellamb.workers.dev';
+  const origin = env.WORKER_ORIGIN || 'https://api.cspiregaming.com';
   const state = await buildStreamAuthState(env, userId, interaction.token);
   const authUrl = buildOAuthUrl(env, `${origin}/api/auth/stream-callback`, {
     scope: 'identify connections',
