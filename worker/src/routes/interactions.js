@@ -15,6 +15,7 @@ import { getDiscordEventsWithArchive, getOverlays } from '../discord-events.js';
 import {
   postChannelMessage,
   editOriginalInteractionResponse,
+  postInteractionFollowup,
 } from '../discord-outbound.js';
 import * as requests from '../event-publish-requests.js';
 import { buildOAuthUrl } from '../auth.js';
@@ -23,7 +24,7 @@ import {
   unregisterStreamer,
 } from './streamers.js';
 import * as streamerRegistry from '../streamers.js';
-import { getParrotPool, buildParrotGrid } from '../parrotbomb.js';
+import { buildBombMessages } from '../parrotbomb.js';
 
 export async function handleInteractions(request, env, ctx) {
   if (request.method !== 'POST') {
@@ -284,28 +285,18 @@ async function commandParrotBomb(interaction, env, ctx) {
   const user = interaction.member?.user || interaction.user;
   const displayName = interaction.member?.nick || user?.global_name || user?.username || 'someone';
 
-  // Fire-and-forget: fetch parrots, edit the deferred public reply.
+  // Defer publicly, then fetch the parrot pool and post the bomb. Custom-emoji
+  // refs push the 9×9 grid past Discord's 2000-char limit, so the bomb may
+  // need to land across the deferred reply + one or two follow-ups.
   ctx.waitUntil((async () => {
-    const pool = await getParrotPool(env);
-    if (!pool.length) {
-      return editOriginal(
-        interaction,
-        env,
-        `${escapeMarkdown(displayName)} tried to set off a parrotBomb(); — but the parrot armory is empty 🦜`,
-      );
+    const { initial, followups } = await buildBombMessages(env, displayName);
+    await editOriginal(interaction, env, initial);
+    for (const content of followups) {
+      await postInteractionFollowup(interaction.application_id, interaction.token, { content });
     }
-    const grid = buildParrotGrid(pool);
-    const header = `**${escapeMarkdown(displayName)}** set off a \`parrotBomb();\``;
-    return editOriginal(interaction, env, `${header}\n\n${grid}`);
   })());
 
-  // Deferred PUBLIC message — everyone in the channel sees the bomb when it
-  // resolves. No FLAGS.EPHEMERAL.
   return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE });
-}
-
-function escapeMarkdown(s) {
-  return String(s).replace(/[*_`~|\\]/g, ch => '\\' + ch);
 }
 
 // ─── Button click ────────────────────────────────────────────────────────────
