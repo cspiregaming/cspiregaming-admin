@@ -50,7 +50,8 @@ export async function renderStreamers(container) {
               <td>${s.twitch ? `<a href="https://twitch.tv/${escHtml(s.twitch.login)}" target="_blank" rel="noopener">${escHtml(s.twitch.displayName || s.twitch.login)}</a>` : '<span style="color:var(--text-muted)">—</span>'}</td>
               <td>${s.youtube ? escHtml(s.youtube.name || '') : '<span style="color:var(--text-muted)">—</span>'}</td>
               <td style="color:var(--text-muted);font-size:12px">${escHtml(fmtDate(s.registeredAt))}</td>
-              <td>
+              <td style="display:flex;gap:6px">
+                ${s.twitch ? `<button class="btn btn-outline" data-test="${escHtml(s.discordId)}" style="padding:4px 10px;font-size:12px">Test Embed</button>` : ''}
                 <button class="btn btn-danger" data-remove="${escHtml(s.discordId)}" style="padding:4px 10px;font-size:12px">Deregister</button>
               </td>
             </tr>
@@ -78,6 +79,28 @@ export async function renderStreamers(container) {
     container.querySelectorAll('[data-remove]').forEach(btn => {
       btn.addEventListener('click', () => onRemoveClick(btn.dataset.remove));
     });
+
+    container.querySelectorAll('[data-test]').forEach(btn => {
+      btn.addEventListener('click', () => onTestClick(btn.dataset.test, btn));
+    });
+  }
+
+  async function onTestClick(discordId, btn) {
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = 'Posting…';
+    const feedback = document.getElementById('streamers-feedback');
+    feedback.innerHTML = '';
+    try {
+      await api.testStreamerLiveEmbed(discordId);
+      feedback.innerHTML = `<div class="alert alert-success">Test embed posted to <strong>#bot-logs</strong>. The streamer was not notified.</div>`;
+      btn.textContent = '✓ Posted';
+      setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 2500);
+    } catch (err) {
+      feedback.innerHTML = `<div class="alert alert-error">Test failed: ${escHtml(err.message)}</div>`;
+      btn.disabled = false;
+      btn.textContent = original;
+    }
   }
 
   async function onRemoveClick(discordId) {

@@ -3,7 +3,7 @@ import { discordOAuthExchange, fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 import * as eventPublishRequests from '../event-publish-requests.js';
 import * as streamerRegistry from '../streamers.js';
-import { unregisterStreamer, postRemovalAuditLog } from './streamers.js';
+import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest } from './streamers.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -324,8 +324,9 @@ async function handleCrudCollection(request, env, key) {
 export async function handleAdminStreamers(request, env) {
   const session = await requireAuth(request, env);
   const url = new URL(request.url);
-  const parts = url.pathname.split('/').filter(Boolean); // ['api','admin','streamers', maybe id]
+  const parts = url.pathname.split('/').filter(Boolean); // ['api','admin','streamers', maybe id, maybe action]
   const targetId = parts[3] || null;
+  const action = parts[4] || null;
 
   if (request.method === 'GET' && !targetId) {
     const map = await streamerRegistry.getAll(env);
@@ -335,7 +336,13 @@ export async function handleAdminStreamers(request, env) {
     return jsonResponse({ streamers: records });
   }
 
-  if (request.method === 'DELETE' && targetId) {
+  if (request.method === 'POST' && targetId && action === 'test-live') {
+    const result = await postLiveAnnouncementTest(env, targetId);
+    if (!result.ok) return jsonResponse({ error: result.error }, 400);
+    return jsonResponse({ ok: true });
+  }
+
+  if (request.method === 'DELETE' && targetId && !action) {
     let body;
     try { body = await request.json(); } catch { body = {}; }
     const reason = (body?.reason || '').trim();

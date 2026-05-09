@@ -42,6 +42,10 @@ LIVE_ANNOUNCE_CHANNEL_ID = "1135732789132673066"
 # Channel polled by the games-grader cron. Bot needs View Channel + Read
 # Message History + Add Reactions here.
 DAILY_GAMES_CHANNEL_ID = "937590181672935454"
+# Officers' bot-debug channel. Used as the destination for the admin SPA's
+# "Test Embed" preview button so officers can see what a live announcement
+# looks like without firing it in #live-announcements.
+BOT_LOGS_CHANNEL_ID = "379709425126211586"
 # Optional override for the worker's public origin. Used to build the OAuth
 # redirect URI for /register-stream and the Twitch EventSub callback URL.
 # Defaults to https://api.cspiregaming.com.

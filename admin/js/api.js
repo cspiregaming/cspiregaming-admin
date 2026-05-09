@@ -90,4 +90,8 @@ export const api = {
       method: 'DELETE',
       body: JSON.stringify({ reason }),
     }),
+  testStreamerLiveEmbed: discordId =>
+    apiFetch(`/api/admin/streamers/${encodeURIComponent(discordId)}/test-live`, {
+      method: 'POST',
+    }),
 };

@@ -238,13 +238,23 @@ async function announceLive(env, event) {
   const stream = await getStreamByUserId(env, event.broadcaster_user_id);
   const login = event.broadcaster_user_login || record.twitch?.login;
   const displayName = event.broadcaster_user_name || record.twitch?.displayName || login;
+
+  const payload = buildLiveAnnouncementPayload({ record, stream, login, displayName });
+  await postChannelMessage(env, channelId, payload);
+}
+
+/**
+ * Build the live-announcement message payload. Shared by the real EventSub
+ * announcer and the admin SPA "Test Embed" preview path. Set
+ * `suppressMention: true` to keep the embed identical but skip pinging the
+ * streamer (used for previews so we don't notify the user during a test).
+ */
+function buildLiveAnnouncementPayload({ record, stream, login, displayName, suppressMention = false }) {
   const url = `https://twitch.tv/${login}`;
   const title = stream?.title || `${displayName} is live`;
   const game = stream?.game_name || null;
 
-  await postChannelMessage(env, channelId, {
-    content: `<@${record.discordId}> is live on Twitch!`,
-    allowed_mentions: { users: [record.discordId] },
+  const payload = {
     embeds: [{
       title,
       url,
@@ -256,7 +266,51 @@ async function announceLive(env, event) {
       footer: { text: 'Twitch' },
       timestamp: stream?.started_at || new Date().toISOString(),
     }],
+  };
+
+  if (suppressMention) {
+    payload.content = `_Preview — ${displayName} would be live on Twitch_`;
+    payload.allowed_mentions = { parse: [] };
+  } else {
+    payload.content = `<@${record.discordId}> is live on Twitch!`;
+    payload.allowed_mentions = { users: [record.discordId] };
+  }
+
+  return payload;
+}
+
+/**
+ * Render the same live-announcement embed used by the EventSub path, but
+ * post it to BOT_LOGS_CHANNEL_ID without pinging the streamer. Called from
+ * the admin SPA so officers can see what a live announcement will look like.
+ *
+ * Falls back to placeholder fields when the streamer isn't currently live
+ * (Helix /streams returns null for offline channels).
+ */
+export async function postLiveAnnouncementTest(env, discordId) {
+  const channelId = env.BOT_LOGS_CHANNEL_ID;
+  if (!channelId) return { ok: false, error: 'BOT_LOGS_CHANNEL_ID not configured' };
+
+  const record = await streamers.getByDiscordId(env, discordId);
+  if (!record) return { ok: false, error: 'Streamer not found' };
+  if (!record.twitch?.login) return { ok: false, error: 'No Twitch link on this streamer' };
+
+  const { userId, login, displayName } = record.twitch;
+  const stream = userId ? await getStreamByUserId(env, userId) : null;
+
+  const payload = buildLiveAnnouncementPayload({
+    record,
+    stream,
+    login,
+    displayName: displayName || login,
+    suppressMention: true,
   });
+
+  const res = await postChannelMessage(env, channelId, payload);
+  if (!res.ok) {
+    return { ok: false, error: `Discord HTTP ${res.status}${res.json?.message ? ` — ${res.json.message}` : ''}` };
+  }
+  return { ok: true };
 }
 
 // ─── Discord helpers (callback-local) ────────────────────────────────────────

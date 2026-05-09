@@ -61,6 +61,7 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
   - **Discord Events** — live list of guild scheduled events from Discord. Toggle "Publish" to surface an event on the public site, and optionally provide a custom action button (text + URL) per event. Default action button is "View on Discord". Recent past events stay listed for 30 days after they end. Toggling Publish here also auto-resolves any pending `/request-event-publish` request for the event (see below).
   - **Manual Events** — hand-curated event cards (title, subtitle, description HTML, action button, optional Google Maps embed and cover image) for events that don't live in Discord.
 - **Streamers** — table of every member registered with the bot via `/register-stream`. Click **Deregister** on a row to remove someone (the SPA prompts for a reason, ≥10 chars, which gets posted to the officers channel as an audit-log embed). Same teardown as `/streamer-remove`: the @streamer role, EventSub subscriptions, and KV record all drop together.
+  - **Test Embed** — appears only on rows with a Twitch link. Posts a preview of the live-announcement embed to `BOT_LOGS_CHANNEL_ID` so you can see exactly what an announcement looks like without firing it in the public live-announce channel. The preview is identical to the real embed except (a) it doesn't ping the streamer and (b) the lead text reads "_Preview — {name} would be live on Twitch_". If the streamer is currently live, it pulls the real title/game/thumbnail; if offline, it falls back to placeholder text with the same layout.
 
 ### Event publish requests
 
@@ -203,6 +204,7 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 | GET, PUT | `/api/admin/social` | Object stored under `CONTENT:social`. |
 | GET | `/api/admin/streamers` | Returns `{streamers: [...]}` — every record in `CONTENT:streamers`, sorted by display name. Backs the admin SPA's Streamers section. |
 | DELETE | `/api/admin/streamers/{discordId}` | Body: `{reason}` (≥10 chars). Calls the same `unregisterStreamer` teardown as `/streamer-remove` and posts the same audit-log embed in `OFFICERS_CHANNEL_ID`. 400 if the reason is too short, 404 if the user isn't registered. |
+| POST | `/api/admin/streamers/{discordId}/test-live` | Posts a preview of the live-announcement embed to `BOT_LOGS_CHANNEL_ID`. Suppresses the @-mention so the streamer isn't pinged. Pulls live stream data via Helix when the broadcaster is online; otherwise uses generic placeholder text with the same layout. 400 if the streamer has no Twitch link or `BOT_LOGS_CHANNEL_ID` isn't set. |
 
 ### Auth model
 
@@ -267,6 +269,7 @@ The bot and OAuth app live in the same Discord application at https://discord.co
 - The bot must be invited to guild `379707231077138442` with **both** the `bot` and `applications.commands` scopes. Without `applications.commands`, slash commands silently won't appear in the picker. Re-invite URL: `https://discord.com/oauth2/authorize?client_id=<DISCORD_APP_ID>&scope=bot+applications.commands&permissions=0`.
 - Bot must have **View Server Members** for the members feature, and **View Channel + Send Messages + Embed Links** in the channels referenced by `OFFICERS_CHANNEL_ID` (publish-request flow) and `LIVE_ANNOUNCE_CHANNEL_ID` (Twitch live announcements).
 - Bot needs **View Channel + Read Message History + Add Reactions** in `DAILY_GAMES_CHANNEL_ID` for the daily-games auto-grader.
+- Bot needs **View Channel + Send Messages + Embed Links** in `BOT_LOGS_CHANNEL_ID` for the admin SPA's "Test Embed" preview button.
 - Bot needs **Manage Roles** in the guild, with the `@streamer` role positioned *below* the bot's highest role, so `/register-stream` can grant it.
 
 ### Twitch application
