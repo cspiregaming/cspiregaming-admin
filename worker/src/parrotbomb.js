@@ -14,42 +14,27 @@
 
 import { fetchGuildEmojis } from './discord.js';
 
-const MAX_MESSAGE = 2000;
-
 /**
- * Build the bomb output for a given user. Returns `{ initial, followups }`
- * where `initial` is the content that replaces the deferred interaction reply
- * and `followups` is an ordered list of additional public messages to post
- * via the interaction webhook.
- *
- * Layout strategy:
- *   1. If `header + grid` fits in one message → single message.
- *   2. Else if the grid alone fits → header in initial, grid as one follow-up.
- *   3. Else split the grid by row into two roughly-equal halves.
+ * Build the bomb payload for a given user — a single Discord message with the
+ * lead text as content and the 9×9 grid as an embed description. The grid
+ * routinely lands at ~2100 chars (over Discord's 2000-char content cap) but
+ * embed descriptions allow up to 4096 chars, so the whole bomb stays in one
+ * message — single bot avatar, no awkward multi-message split.
  */
-export async function buildBombMessages(env, displayName) {
+export async function buildBombPayload(env, displayName) {
   const pool = await getParrotPool(env);
-  const header = `**${escapeMarkdown(displayName)}** set off a \`parrotBomb();\``;
+  const safeName = escapeMarkdown(displayName);
 
   if (!pool.length) {
     return {
-      initial: `${escapeMarkdown(displayName)} tried to set off a \`parrotBomb();\` — but the parrot armory is empty 🦜`,
-      followups: [],
+      content: `${safeName} tried to set off a \`parrotBomb();\` — but the parrot armory is empty 🦜`,
     };
   }
 
   const grid = buildBullseyeGrid(pool);
-
-  const combined = `${header}\n\n${grid}`;
-  if (combined.length <= MAX_MESSAGE) return { initial: combined, followups: [] };
-
-  if (grid.length <= MAX_MESSAGE) return { initial: header, followups: [grid] };
-
-  const rows = grid.split('\n');
-  const half = Math.ceil(rows.length / 2);
   return {
-    initial: header,
-    followups: [rows.slice(0, half).join('\n'), rows.slice(half).join('\n')],
+    content: `**${safeName}** set off a \`parrotBomb();\``,
+    embeds: [{ description: grid, color: 0x7ec850 }],
   };
 }
 

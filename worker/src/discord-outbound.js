@@ -26,32 +26,6 @@ export async function addGuildMemberRole(env, guildId, userId, roleId) {
   return discordRequest(env, 'PUT', `/guilds/${guildId}/members/${userId}/roles/${roleId}`, null);
 }
 
-/**
- * Post a follow-up message to a slash-command interaction. Auth is the
- * webhook token — no BOT_TOKEN needed. Pass `flags: 1<<6` in the payload for
- * an ephemeral follow-up; omit for a public one.
- */
-export async function postInteractionFollowup(applicationId, interactionToken, payload) {
-  const url = `https://discord.com/api/v10/webhooks/${applicationId}/${interactionToken}`;
-  let res;
-  try {
-    res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-  } catch (err) {
-    console.error('discord-outbound: followup fetch failed', err);
-    return { ok: false, status: 0 };
-  }
-  let json = null;
-  if (res.status !== 204) {
-    try { json = await res.json(); } catch { /* ignore */ }
-  }
-  if (!res.ok) console.error(`discord-outbound: followup → ${res.status}`, json);
-  return { ok: res.ok, status: res.status, json };
-}
-
 export async function removeGuildMemberRole(env, guildId, userId, roleId) {
   return discordRequest(env, 'DELETE', `/guilds/${guildId}/members/${userId}/roles/${roleId}`, null);
 }

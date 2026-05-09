@@ -15,7 +15,6 @@ import { getDiscordEventsWithArchive, getOverlays } from '../discord-events.js';
 import {
   postChannelMessage,
   editOriginalInteractionResponse,
-  postInteractionFollowup,
 } from '../discord-outbound.js';
 import * as requests from '../event-publish-requests.js';
 import { buildOAuthUrl } from '../auth.js';
@@ -24,7 +23,7 @@ import {
   unregisterStreamer,
 } from './streamers.js';
 import * as streamerRegistry from '../streamers.js';
-import { buildBombMessages } from '../parrotbomb.js';
+import { buildBombPayload } from '../parrotbomb.js';
 
 export async function handleInteractions(request, env, ctx) {
   if (request.method !== 'POST') {
@@ -285,15 +284,12 @@ async function commandParrotBomb(interaction, env, ctx) {
   const user = interaction.member?.user || interaction.user;
   const displayName = interaction.member?.nick || user?.global_name || user?.username || 'someone';
 
-  // Defer publicly, then fetch the parrot pool and post the bomb. Custom-emoji
-  // refs push the 9×9 grid past Discord's 2000-char limit, so the bomb may
-  // need to land across the deferred reply + one or two follow-ups.
+  // Defer publicly, then fetch the parrot pool and replace the deferred reply
+  // with the bomb payload (lead text as content, grid as an embed description
+  // so the whole 9×9 fits in a single message).
   ctx.waitUntil((async () => {
-    const { initial, followups } = await buildBombMessages(env, displayName);
-    await editOriginal(interaction, env, initial);
-    for (const content of followups) {
-      await postInteractionFollowup(interaction.application_id, interaction.token, { content });
-    }
+    const payload = await buildBombPayload(env, displayName);
+    await editOriginalInteractionResponse(env, interaction.application_id, interaction.token, payload);
   })());
 
   return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE });
