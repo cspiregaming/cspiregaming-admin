@@ -82,4 +82,12 @@ export const api = {
   // Social
   getSocial: () => apiFetch('/api/admin/social'),
   putSocial: data => apiFetch('/api/admin/social', { method: 'PUT', body: JSON.stringify(data) }),
+
+  // Streamers
+  getStreamers: () => apiFetch('/api/admin/streamers'),
+  removeStreamer: (discordId, reason) =>
+    apiFetch(`/api/admin/streamers/${encodeURIComponent(discordId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify({ reason }),
+    }),
 };

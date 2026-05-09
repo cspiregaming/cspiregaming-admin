@@ -21,6 +21,7 @@ import { buildOAuthUrl } from '../auth.js';
 import {
   buildStreamAuthState,
   unregisterStreamer,
+  postRemovalAuditLog,
 } from './streamers.js';
 import * as streamerRegistry from '../streamers.js';
 import { buildBombPayload } from '../parrotbomb.js';
@@ -351,7 +352,7 @@ async function commandStreamerRemove(interaction, env, ctx) {
 
   ctx.waitUntil((async () => {
     await unregisterStreamer(env, targetId);
-    await postAuditLog(env, {
+    await postRemovalAuditLog(env, {
       actorId: actor?.id,
       actorName,
       targetId,
@@ -371,54 +372,6 @@ async function commandStreamerRemove(interaction, env, ctx) {
     type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE,
     data: { flags: FLAGS.EPHEMERAL },
   });
-}
-
-async function postAuditLog(env, info) {
-  const channelId = env.OFFICERS_CHANNEL_ID;
-  if (!channelId) {
-    console.error('streamer-remove: OFFICERS_CHANNEL_ID not set; audit log dropped');
-    return;
-  }
-  const platforms = [];
-  if (info.twitchLogin) platforms.push({ name: 'Twitch', value: `\`${info.twitchLogin}\``, inline: true });
-  if (info.youtubeName) platforms.push({ name: 'YouTube', value: `\`${info.youtubeName}\``, inline: true });
-
-  const ts = formatCentral(new Date().toISOString());
-
-  await postChannelMessage(env, channelId, {
-    embeds: [{
-      title: 'Streamer deregistered',
-      color: 0xE07B00,
-      fields: [
-        { name: 'Removed', value: `<@${info.targetId}> (${escapeMd(info.targetName)})`, inline: false },
-        { name: 'By', value: `<@${info.actorId}> (${escapeMd(info.actorName)})`, inline: false },
-        ...platforms,
-        { name: 'Reason', value: truncate(info.reason, 1000), inline: false },
-      ],
-      footer: { text: ts },
-    }],
-  });
-}
-
-function formatCentral(iso) {
-  const d = new Date(iso);
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/Chicago',
-    weekday: 'short',
-    month: 'short',
-    day: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZoneName: 'short',
-  }).formatToParts(d);
-  const get = type => parts.find(p => p.type === type)?.value || '';
-  return `${get('weekday')}, ${get('day')} ${get('month')} ${get('year')} ${get('hour')}:${get('minute')} ${get('timeZoneName')}`;
-}
-
-function escapeMd(s) {
-  return String(s).replace(/[*_`~|\\]/g, ch => '\\' + ch);
 }
 
 // ─── /parrotbomb ─────────────────────────────────────────────────────────────

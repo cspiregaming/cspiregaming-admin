@@ -336,3 +336,64 @@ export async function unregisterStreamer(env, discordId) {
   }
   return { existed: true, record };
 }
+
+/**
+ * Post the "streamer deregistered" audit-log embed in OFFICERS_CHANNEL_ID.
+ * Shared by /streamer-remove and the admin-SPA DELETE endpoint so both paths
+ * produce identical log entries.
+ *
+ *   info: { actorId, actorName, targetId, targetName, twitchLogin?, youtubeName?, reason }
+ */
+export async function postRemovalAuditLog(env, info) {
+  const channelId = env.OFFICERS_CHANNEL_ID;
+  if (!channelId) {
+    console.error('streamer audit: OFFICERS_CHANNEL_ID not set; audit log dropped');
+    return { posted: false };
+  }
+  const platforms = [];
+  if (info.twitchLogin) platforms.push({ name: 'Twitch', value: `\`${info.twitchLogin}\``, inline: true });
+  if (info.youtubeName) platforms.push({ name: 'YouTube', value: `\`${info.youtubeName}\``, inline: true });
+
+  const ts = formatCentralAudit(new Date().toISOString());
+
+  const res = await postChannelMessage(env, channelId, {
+    embeds: [{
+      title: 'Streamer deregistered',
+      color: 0xE07B00,
+      fields: [
+        { name: 'Removed', value: `<@${info.targetId}> (${escapeMdAudit(info.targetName)})`, inline: false },
+        { name: 'By', value: `<@${info.actorId}> (${escapeMdAudit(info.actorName)})`, inline: false },
+        ...platforms,
+        { name: 'Reason', value: truncateAudit(info.reason, 1000), inline: false },
+      ],
+      footer: { text: ts },
+    }],
+  });
+  return { posted: !!res.ok };
+}
+
+function formatCentralAudit(iso) {
+  const d = new Date(iso);
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    weekday: 'short',
+    month: 'short',
+    day: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+    timeZoneName: 'short',
+  }).formatToParts(d);
+  const get = type => parts.find(p => p.type === type)?.value || '';
+  return `${get('weekday')}, ${get('day')} ${get('month')} ${get('year')} ${get('hour')}:${get('minute')} ${get('timeZoneName')}`;
+}
+
+function escapeMdAudit(s) {
+  return String(s).replace(/[*_`~|\\]/g, ch => '\\' + ch);
+}
+
+function truncateAudit(s, n) {
+  if (!s) return s;
+  return s.length > n ? s.slice(0, n - 1) + '…' : s;
+}

@@ -2,6 +2,8 @@ import { requireAuth, buildOAuthUrl, signJwt } from '../auth.js';
 import { discordOAuthExchange, fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 import * as eventPublishRequests from '../event-publish-requests.js';
+import * as streamerRegistry from '../streamers.js';
+import { unregisterStreamer, postRemovalAuditLog } from './streamers.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -302,6 +304,58 @@ async function handleCrudCollection(request, env, key) {
     const items = await getAll();
     const filtered = items.filter(i => i.id !== itemId);
     await putAll(filtered);
+    return jsonResponse({ ok: true });
+  }
+
+  return methodNotAllowed();
+}
+
+// ─── Streamers ───────────────────────────────────────────────────────────────
+
+/**
+ * Mirrors the slash-command admin tools (/streamer-list, /streamer-remove).
+ * GET    /api/admin/streamers              → all registered streamers
+ * DELETE /api/admin/streamers/{discordId}  → body {reason} (≥10 chars). Drops
+ *                                            the record + EventSub subs +
+ *                                            @streamer role and posts the
+ *                                            same audit-log embed in the
+ *                                            officers channel.
+ */
+export async function handleAdminStreamers(request, env) {
+  const session = await requireAuth(request, env);
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/').filter(Boolean); // ['api','admin','streamers', maybe id]
+  const targetId = parts[3] || null;
+
+  if (request.method === 'GET' && !targetId) {
+    const map = await streamerRegistry.getAll(env);
+    const records = Object.values(map).sort(
+      (a, b) => (a.displayName || '').localeCompare(b.displayName || ''),
+    );
+    return jsonResponse({ streamers: records });
+  }
+
+  if (request.method === 'DELETE' && targetId) {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const reason = (body?.reason || '').trim();
+    if (reason.length < 10) {
+      return jsonResponse({ error: 'Reason must be at least 10 characters' }, 400);
+    }
+
+    const existing = await streamerRegistry.getByDiscordId(env, targetId);
+    if (!existing) return jsonResponse({ error: 'Not found' }, 404);
+
+    await unregisterStreamer(env, targetId);
+    await postRemovalAuditLog(env, {
+      actorId: session.sub,
+      actorName: session.displayName || session.username || session.sub,
+      targetId,
+      targetName: existing.displayName || existing.discordUsername || targetId,
+      twitchLogin: existing.twitch?.login || null,
+      youtubeName: existing.youtube?.name || null,
+      reason,
+    });
     return jsonResponse({ ok: true });
   }
 

@@ -6,6 +6,7 @@ import { renderOfficers } from './views/officers.js';
 import { renderEvents } from './views/events.js';
 import { renderSocial } from './views/social.js';
 import { renderSettings } from './views/settings.js';
+import { renderStreamers } from './views/streamers.js';
 
 // ─── State ──────────────────────────────────────────────────────
 let currentSection = 'dashboard';
@@ -96,6 +97,10 @@ function renderApp() {
           <span class="nav-item__icon">📅</span>
           <span>Events</span>
         </div>
+        <div class="nav-item" data-section="streamers">
+          <span class="nav-item__icon">🎮</span>
+          <span>Streamers</span>
+        </div>
         <div class="nav-item" data-section="social">
           <span class="nav-item__icon">🔗</span>
           <span>Social Links</span>
@@ -141,6 +146,7 @@ export function navigateTo(section) {
     roles: renderRolesConfig,
     officers: renderOfficers,
     events: renderEvents,
+    streamers: renderStreamers,
     social: renderSocial,
     settings: renderSettings,
   };

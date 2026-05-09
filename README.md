@@ -60,6 +60,7 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
 - **Events** — split into two sections:
   - **Discord Events** — live list of guild scheduled events from Discord. Toggle "Publish" to surface an event on the public site, and optionally provide a custom action button (text + URL) per event. Default action button is "View on Discord". Recent past events stay listed for 30 days after they end. Toggling Publish here also auto-resolves any pending `/request-event-publish` request for the event (see below).
   - **Manual Events** — hand-curated event cards (title, subtitle, description HTML, action button, optional Google Maps embed and cover image) for events that don't live in Discord.
+- **Streamers** — table of every member registered with the bot via `/register-stream`. Click **Deregister** on a row to remove someone (the SPA prompts for a reason, ≥10 chars, which gets posted to the officers channel as an audit-log embed). Same teardown as `/streamer-remove`: the @streamer role, EventSub subscriptions, and KV record all drop together.
 
 ### Event publish requests
 
@@ -178,6 +179,8 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 | PUT | `/api/admin/discord-events/{eventId}` | Body: `{published, actionButtonText?, actionButtonUrl?}`. Writes (or removes if all fields empty) one entry in `discord_event_overlays`. |
 | PUT | `/api/admin/discord-events` | Batch update. Body: `{overlays: {<eventId>: {published, actionButtonText?, actionButtonUrl?}}}`. Single read-modify-write across the whole map; the admin UI uses this to avoid races when toggling multiple events at once. |
 | GET, PUT | `/api/admin/social` | Object stored under `CONTENT:social`. |
+| GET | `/api/admin/streamers` | Returns `{streamers: [...]}` — every record in `CONTENT:streamers`, sorted by display name. Backs the admin SPA's Streamers section. |
+| DELETE | `/api/admin/streamers/{discordId}` | Body: `{reason}` (≥10 chars). Calls the same `unregisterStreamer` teardown as `/streamer-remove` and posts the same audit-log embed in `OFFICERS_CHANNEL_ID`. 400 if the reason is too short, 404 if the user isn't registered. |
 
 ### Auth model
 
