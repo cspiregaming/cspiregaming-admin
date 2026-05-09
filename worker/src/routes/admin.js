@@ -3,7 +3,7 @@ import { discordOAuthExchange, fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 import * as eventPublishRequests from '../event-publish-requests.js';
 import * as streamerRegistry from '../streamers.js';
-import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest } from './streamers.js';
+import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest, registerOfficialStreamer } from './streamers.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -334,6 +334,18 @@ export async function handleAdminStreamers(request, env) {
       (a, b) => (a.displayName || '').localeCompare(b.displayName || ''),
     );
     return jsonResponse({ streamers: records });
+  }
+
+  // POST /api/admin/streamers/official  body { twitchLogin }
+  if (request.method === 'POST' && targetId === 'official' && !action) {
+    let body;
+    try { body = await request.json(); } catch { body = {}; }
+    const twitchLogin = (body?.twitchLogin || '').trim();
+    if (!twitchLogin) return jsonResponse({ error: 'twitchLogin is required' }, 400);
+    const workerOrigin = `${url.protocol}//${url.host}`;
+    const result = await registerOfficialStreamer(env, { twitchLogin, workerOrigin });
+    if (!result.ok) return jsonResponse({ error: result.error }, 400);
+    return jsonResponse({ ok: true, streamer: result.record });
   }
 
   if (request.method === 'POST' && targetId && action === 'test-live') {

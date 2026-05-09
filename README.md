@@ -60,8 +60,9 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
 - **Events** — split into two sections:
   - **Discord Events** — live list of guild scheduled events from Discord. Toggle "Publish" to surface an event on the public site, and optionally provide a custom action button (text + URL) per event. Default action button is "View on Discord". Recent past events stay listed for 30 days after they end. Toggling Publish here also auto-resolves any pending `/request-event-publish` request for the event (see below).
   - **Manual Events** — hand-curated event cards (title, subtitle, description HTML, action button, optional Google Maps embed and cover image) for events that don't live in Discord.
-- **Streamers** — table of every member registered with the bot via `/register-stream`. Click **Deregister** on a row to remove someone (the SPA prompts for a reason, ≥10 chars, which gets posted to the officers channel as an audit-log embed). Same teardown as `/streamer-remove`: the @streamer role, EventSub subscriptions, and KV record all drop together.
-  - **Test Embed** — appears only on rows with a Twitch link. Posts a preview of the live-announcement embed to `BOT_LOGS_CHANNEL_ID` so you can see exactly what an announcement looks like without firing it in the public live-announce channel. The preview is identical to the real embed except (a) it doesn't ping the streamer and (b) the lead text reads "_Preview — {name} would be live on Twitch_". If the streamer is currently live, it pulls the real title/game/thumbnail; if offline, it falls back to placeholder text with the same layout.
+- **Streamers** — table of every member registered with the bot via `/register-stream`, plus any official channels registered through this section. Click **Deregister** on a row to remove someone (the SPA prompts for a reason, ≥10 chars, which gets posted to the officers channel as an audit-log embed). Same teardown as `/streamer-remove`: the @streamer role (skipped for official channels — no Discord user), EventSub subscriptions, and KV record all drop together.
+  - **Test Embed** — appears only on rows with a Twitch link. Posts a preview of the live-announcement embed to `BOT_LOGS_CHANNEL_ID` so you can see exactly what an announcement looks like without firing it in the public live-announce channel. The preview is identical to the real embed except (a) it doesn't ping anyone and (b) the lead text reads "_Preview — {name} would be live on Twitch_". If the streamer is currently live, it pulls the real title/game/thumbnail; if offline, it falls back to placeholder text with the same layout.
+  - **Add Official Streamer** — for Twitch channels that don't have a Discord user (e.g. the C Spire Gaming Twitch account itself). Enter the Twitch login, hit Register, and the bot creates an `isOfficial: true` streamer record (synthetic `discordId = official:<twitchUserId>`), wires up Twitch EventSub, and tags `@csg stream notifications` instead of `@community stream notifications` when this channel goes live. Idempotent — re-registering the same login is safe.
 
 ### Event publish requests
 
@@ -102,7 +103,10 @@ Members can self-register as streamers from Discord:
   - assigns the **@streamer** role (`STREAMER_ROLE_ID` in `wrangler.toml`),
   - subscribes to Twitch EventSub (`stream.online` + `stream.offline`) for that user, and
   - DMs / follows-up the original interaction confirming they're set up.
-- **Going live** — when Twitch fires `stream.online`, the worker posts an embed in the configured `LIVE_ANNOUNCE_CHANNEL_ID`: stream title, game/category, live thumbnail, "Watch on Twitch" link, and a ping of the streamer's Discord user.
+- **Going live** — when Twitch fires `stream.online`, the worker posts an embed in the configured `LIVE_ANNOUNCE_CHANNEL_ID`: stream title, game/category, live thumbnail, "Watch on Twitch" link, plus role + user pings:
+  - Community streamers ping `@community stream notifications` (`COMMUNITY_STREAM_ROLE_ID`) and the streamer's own Discord user.
+  - The official C Spire Gaming Twitch channel pings `@csg stream notifications` (`CSG_STREAM_ROLE_ID`) only — there's no Discord user behind it.
+  - Members opt in to either or both roles independently for the notifications they want.
 - **`/unregister-stream`** — removes the @streamer role, deletes the Twitch EventSub subscriptions, and drops the streamer record.
 - **`/streamer-list`** *(mods+)* — ephemeral list of every member registered with the bot, including their Twitch login and YouTube channel name. Capped at 25 entries with an overflow note.
 - **`/streamer-remove user reason`** *(mods+)* — deregisters someone else's streamer record. The `reason` field is required (≥10 chars) and gets posted as an audit-log embed in `OFFICERS_CHANNEL_ID` along with who acted, who was removed, what platforms they had connected, and a Central-Time timestamp. Reuses the same teardown path as `/unregister-stream` (KV record + EventSub subs + @streamer role all dropped).
@@ -168,7 +172,7 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 | `CONTENT` | `discord_event_overlays` | JSON object keyed by Discord scheduled-event ID. Each entry: `{published, actionButtonText?, actionButtonUrl?}`. Only events with `published === true` show on the public site. Empty entries are deleted. |
 | `CONTENT` | `past_discord_events` | JSON object keyed by Discord event ID, snapshotted when an event completes or disappears from Discord. Each entry is the normalized event shape plus `archivedAt`. Pruned to entries newer than 30 days every time the live cache misses. |
 | `CONTENT` | `event_publish_requests` | JSON object keyed by Discord interaction ID. Each entry: `{id, eventId, requestedBy, requestedAt, status: 'pending'\|'approved'\|'denied', channelId, channelMessageId, decidedBy?, decidedAt?, downgradeReason?}`. Pruned 30 days after `decidedAt`. |
-| `CONTENT` | `streamers` | JSON object keyed by Discord user ID. Each entry: `{discordId, discordUsername, displayName, registeredAt, updatedAt, twitch?: {userId, login, displayName, eventSubIds: {online, offline}}, youtube?: {channelId, name}}`. Written by the `/register-stream` OAuth callback; deleted by `/unregister-stream`. |
+| `CONTENT` | `streamers` | JSON object keyed by Discord user ID. Each entry: `{discordId, discordUsername, displayName, registeredAt, updatedAt, isOfficial?, twitch?: {userId, login, displayName, eventSubIds: {online, offline}}, youtube?: {channelId, name}}`. Written by the `/register-stream` OAuth callback; deleted by `/unregister-stream`. Official channels (the C Spire Gaming Twitch account) use `discordId = "official:<twitchUserId>"` and have `isOfficial: true`. |
 | `CONTENT` | `streamers_by_twitch` | JSON object keyed by Twitch user ID → Discord user ID. Reverse index used by the EventSub webhook to resolve incoming `stream.online` notifications back to a streamer record. |
 | `CONTENT` | `daily_games_last_seen` | Last Discord message ID processed by the games-grader cron in `DAILY_GAMES_CHANNEL_ID`. Acts as a high-water mark so each tick only inspects messages newer than the previous run. Initialized to the most-recent message on first run (no historical backfill). |
 | `CONTENT` | `social` | JSON object `{discord, twitch, facebook, instagram, twitter, subscribe, exchange, status}` |
@@ -205,6 +209,7 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 | GET | `/api/admin/streamers` | Returns `{streamers: [...]}` — every record in `CONTENT:streamers`, sorted by display name. Backs the admin SPA's Streamers section. |
 | DELETE | `/api/admin/streamers/{discordId}` | Body: `{reason}` (≥10 chars). Calls the same `unregisterStreamer` teardown as `/streamer-remove` and posts the same audit-log embed in `OFFICERS_CHANNEL_ID`. 400 if the reason is too short, 404 if the user isn't registered. |
 | POST | `/api/admin/streamers/{discordId}/test-live` | Posts a preview of the live-announcement embed to `BOT_LOGS_CHANNEL_ID`. Suppresses the @-mention so the streamer isn't pinged. Pulls live stream data via Helix when the broadcaster is online; otherwise uses generic placeholder text with the same layout. 400 if the streamer has no Twitch link or `BOT_LOGS_CHANNEL_ID` isn't set. |
+| POST | `/api/admin/streamers/official` | Body: `{twitchLogin}`. Resolves the login via Helix, creates an official streamer record (`isOfficial: true`, synthetic `discordId = official:<twitchUserId>`), and registers Twitch EventSub. Idempotent — re-registering the same login reuses the existing record + subs. 400 if the login can't be resolved. |
 
 ### Auth model
 
@@ -311,7 +316,7 @@ npx wrangler secret put TWITCH_CLIENT_SECRET   # Twitch app Client Secret
 npx wrangler secret put TWITCH_EVENTSUB_SECRET # Random ≥10-char string: openssl rand -hex 32
 ```
 
-Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, `REQUESTER_ROLE_IDS`, `MOD_ROLE_IDS`, `STREAMER_ROLE_ID`, `LIVE_ANNOUNCE_CHANNEL_ID`, and `DAILY_GAMES_CHANNEL_ID`.
+Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, `REQUESTER_ROLE_IDS`, `MOD_ROLE_IDS`, `STREAMER_ROLE_ID`, `LIVE_ANNOUNCE_CHANNEL_ID`, `COMMUNITY_STREAM_ROLE_ID`, `CSG_STREAM_ROLE_ID`, `DAILY_GAMES_CHANNEL_ID`, and `BOT_LOGS_CHANNEL_ID`.
 
 Then `npx wrangler deploy` once manually so the worker exists, after which CI takes over.
 

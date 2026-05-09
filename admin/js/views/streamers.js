@@ -45,7 +45,10 @@ export async function renderStreamers(container) {
             <tr data-discord-id="${escHtml(s.discordId)}">
               <td>
                 <strong>${escHtml(s.displayName || s.discordUsername || s.discordId)}</strong>
-                <div style="color:var(--text-muted);font-size:11px">${escHtml(s.discordId)}</div>
+                ${s.isOfficial
+                  ? '<span style="display:inline-block;margin-left:6px;padding:1px 6px;background:#9146FF;color:white;border-radius:3px;font-size:10px;font-weight:600;letter-spacing:.05em">OFFICIAL</span>'
+                  : ''}
+                <div style="color:var(--text-muted);font-size:11px">${escHtml(s.isOfficial ? 'no Discord user' : s.discordId)}</div>
               </td>
               <td>${s.twitch ? `<a href="https://twitch.tv/${escHtml(s.twitch.login)}" target="_blank" rel="noopener">${escHtml(s.twitch.displayName || s.twitch.login)}</a>` : '<span style="color:var(--text-muted)">—</span>'}</td>
               <td>${s.youtube ? escHtml(s.youtube.name || '') : '<span style="color:var(--text-muted)">—</span>'}</td>
@@ -74,6 +77,22 @@ export async function renderStreamers(container) {
         ${renderTable()}
       </div>
       <div id="streamers-feedback" style="margin-top:12px"></div>
+
+      <div class="card" style="margin-top:20px">
+        <h2>Add Official Streamer</h2>
+        <p style="color:var(--text-muted);font-size:13px">
+          For Twitch channels with no Discord user (e.g. the C Spire Gaming account itself). Tags
+          <strong>@csg stream notifications</strong> when these go live.
+        </p>
+        <form id="official-form" style="display:flex;gap:8px;align-items:end;flex-wrap:wrap">
+          <div class="form-group" style="flex:1;min-width:240px;margin:0">
+            <label>Twitch Login</label>
+            <input name="twitchLogin" placeholder="cspiregaming" required>
+          </div>
+          <button type="submit" class="btn btn-primary">Register</button>
+        </form>
+        <div id="official-form-feedback" style="margin-top:10px"></div>
+      </div>
     `;
 
     container.querySelectorAll('[data-remove]').forEach(btn => {
@@ -83,6 +102,27 @@ export async function renderStreamers(container) {
     container.querySelectorAll('[data-test]').forEach(btn => {
       btn.addEventListener('click', () => onTestClick(btn.dataset.test, btn));
     });
+
+    document.getElementById('official-form')?.addEventListener('submit', onOfficialSubmit);
+  }
+
+  async function onOfficialSubmit(e) {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const twitchLogin = String(fd.get('twitchLogin') || '').trim();
+    const feedback = document.getElementById('official-form-feedback');
+    feedback.innerHTML = '';
+    if (!twitchLogin) return;
+    try {
+      const res = await api.registerOfficialStreamer(twitchLogin);
+      const refreshed = await api.getStreamers();
+      streamers = refreshed.streamers || [];
+      render();
+      document.getElementById('official-form-feedback').innerHTML =
+        `<div class="alert alert-success">Registered <strong>${escHtml(res.streamer?.twitch?.displayName || twitchLogin)}</strong> as an official streamer.</div>`;
+    } catch (err) {
+      feedback.innerHTML = `<div class="alert alert-error">${escHtml(err.message)}</div>`;
+    }
   }
 
   async function onTestClick(discordId, btn) {

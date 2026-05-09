@@ -61,6 +61,12 @@ export async function getUserById(env, userId) {
   return r.json?.data?.[0] || null;
 }
 
+export async function getUserByLogin(env, login) {
+  const r = await helix(env, 'GET', '/users', { query: { login } });
+  if (!r.ok) return null;
+  return r.json?.data?.[0] || null;
+}
+
 export async function getStreamByUserId(env, userId) {
   const r = await helix(env, 'GET', '/streams', { query: { user_id: userId } });
   if (!r.ok) return null;

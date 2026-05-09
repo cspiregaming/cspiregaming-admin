@@ -94,4 +94,9 @@ export const api = {
     apiFetch(`/api/admin/streamers/${encodeURIComponent(discordId)}/test-live`, {
       method: 'POST',
     }),
+  registerOfficialStreamer: twitchLogin =>
+    apiFetch('/api/admin/streamers/official', {
+      method: 'POST',
+      body: JSON.stringify({ twitchLogin }),
+    }),
 };

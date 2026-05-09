@@ -312,7 +312,10 @@ async function commandStreamerList(interaction, env) {
     const tw = r.twitch ? `Twitch: \`${r.twitch.login}\`` : null;
     const yt = r.youtube ? `YouTube: \`${r.youtube.name}\`` : null;
     const platforms = [tw, yt].filter(Boolean).join(' · ') || 'no platforms';
-    return `• <@${r.discordId}> — ${platforms}`;
+    const subject = r.isOfficial
+      ? `**${r.displayName || r.discordUsername}** *(official)*`
+      : `<@${r.discordId}>`;
+    return `• ${subject} — ${platforms}`;
   });
   if (records.length > cap) {
     lines.push(`…and ${records.length - cap} more.`);

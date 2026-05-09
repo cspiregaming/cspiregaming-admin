@@ -39,6 +39,14 @@ STREAMER_ROLE_ID = "REPLACE_WITH_STREAMER_ROLE_ID"
 # Channel where Twitch live announcements get posted. Bot needs View Channel +
 # Send Messages + Embed Links here.
 LIVE_ANNOUNCE_CHANNEL_ID = "1135732789132673066"
+# Pingable role for community-streamer go-live notifications. Members opt in
+# by self-assigning this role; the bot pings it when a registered community
+# streamer goes live.
+COMMUNITY_STREAM_ROLE_ID = "1357599270739382343"
+# Pingable role for the official C Spire Gaming Twitch channel's go-live
+# notifications. Pinged when an isOfficial: true streamer record fires
+# stream.online — gives members a separate opt-in for "main account only".
+CSG_STREAM_ROLE_ID = "1357598742273982515"
 # Channel polled by the games-grader cron. Bot needs View Channel + Read
 # Message History + Add Reactions here.
 DAILY_GAMES_CHANNEL_ID = "937590181672935454"

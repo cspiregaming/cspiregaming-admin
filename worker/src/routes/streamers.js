@@ -24,6 +24,7 @@ import {
 import * as streamers from '../streamers.js';
 import {
   getUserById as getTwitchUser,
+  getUserByLogin as getTwitchUserByLogin,
   getStreamByUserId,
   createSubscription,
   deleteSubscription,
@@ -239,17 +240,24 @@ async function announceLive(env, event) {
   const login = event.broadcaster_user_login || record.twitch?.login;
   const displayName = event.broadcaster_user_name || record.twitch?.displayName || login;
 
-  const payload = buildLiveAnnouncementPayload({ record, stream, login, displayName });
+  const payload = buildLiveAnnouncementPayload({ env, record, stream, login, displayName });
   await postChannelMessage(env, channelId, payload);
 }
 
 /**
  * Build the live-announcement message payload. Shared by the real EventSub
- * announcer and the admin SPA "Test Embed" preview path. Set
- * `suppressMention: true` to keep the embed identical but skip pinging the
- * streamer (used for previews so we don't notify the user during a test).
+ * announcer and the admin SPA "Test Embed" preview path.
+ *
+ * Mention strategy depends on `record.isOfficial`:
+ *   - Community streamers: ping the community role (env.COMMUNITY_STREAM_ROLE_ID)
+ *     and the streamer's own Discord user.
+ *   - Official streamers (the C Spire Gaming Twitch channel): ping just
+ *     env.CSG_STREAM_ROLE_ID — there's no Discord user behind the channel.
+ *
+ * Set `suppressMention: true` to keep the embed identical but skip pinging
+ * (used for the admin SPA preview so it doesn't notify users during a test).
  */
-function buildLiveAnnouncementPayload({ record, stream, login, displayName, suppressMention = false }) {
+function buildLiveAnnouncementPayload({ env, record, stream, login, displayName, suppressMention = false }) {
   const url = `https://twitch.tv/${login}`;
   const title = stream?.title || `${displayName} is live`;
   const game = stream?.game_name || null;
@@ -271,12 +279,67 @@ function buildLiveAnnouncementPayload({ record, stream, login, displayName, supp
   if (suppressMention) {
     payload.content = `_Preview — ${displayName} would be live on Twitch_`;
     payload.allowed_mentions = { parse: [] };
+    return payload;
+  }
+
+  if (record.isOfficial) {
+    const roleId = env.CSG_STREAM_ROLE_ID;
+    const tag = roleId ? `<@&${roleId}> ` : '';
+    payload.content = `${tag}**${displayName}** is live on Twitch!`;
+    payload.allowed_mentions = { roles: roleId ? [roleId] : [] };
   } else {
-    payload.content = `<@${record.discordId}> is live on Twitch!`;
-    payload.allowed_mentions = { users: [record.discordId] };
+    const roleId = env.COMMUNITY_STREAM_ROLE_ID;
+    const roleTag = roleId ? `<@&${roleId}> ` : '';
+    payload.content = `${roleTag}<@${record.discordId}> is live on Twitch!`;
+    payload.allowed_mentions = {
+      users: [record.discordId],
+      roles: roleId ? [roleId] : [],
+    };
   }
 
   return payload;
+}
+
+/**
+ * Register an "official" Twitch channel — used for the C Spire Gaming
+ * account, which has no Discord user behind it. Synthesizes a discordId of
+ * `official:<twitchUserId>` so the record slots into the same KV map without
+ * colliding with real Discord snowflakes, and skips any Discord-user-only
+ * teardown (no @streamer role to grant, no DM, etc.).
+ *
+ * Idempotent: if the same Twitch login is already registered as official,
+ * the existing record is reused and only missing EventSub subscriptions
+ * are recreated.
+ */
+export async function registerOfficialStreamer(env, { twitchLogin, workerOrigin }) {
+  if (!twitchLogin) return { ok: false, error: 'Twitch login is required' };
+  const twitchUser = await getTwitchUserByLogin(env, twitchLogin.trim().toLowerCase());
+  if (!twitchUser) return { ok: false, error: `No Twitch user found for "${twitchLogin}"` };
+
+  const synthDiscordId = `official:${twitchUser.id}`;
+  const prior = await streamers.getByDiscordId(env, synthDiscordId);
+  const priorSubs = prior?.twitch?.eventSubIds || {};
+
+  const callbackUrl = `${workerOrigin || 'https://api.cspiregaming.com'}/api/twitch/eventsub`;
+  const reuse = prior?.twitch?.userId === twitchUser.id;
+  const [online, offline] = await Promise.all([
+    reuse && priorSubs.online ? priorSubs.online : createSubscription(env, 'stream.online', twitchUser.id, callbackUrl),
+    reuse && priorSubs.offline ? priorSubs.offline : createSubscription(env, 'stream.offline', twitchUser.id, callbackUrl),
+  ]);
+
+  const record = await streamers.upsert(env, {
+    discordId: synthDiscordId,
+    discordUsername: twitchUser.display_name,
+    displayName: twitchUser.display_name,
+    isOfficial: true,
+    twitch: {
+      userId: twitchUser.id,
+      login: twitchUser.login,
+      displayName: twitchUser.display_name,
+      eventSubIds: { online, offline },
+    },
+  });
+  return { ok: true, record };
 }
 
 /**
@@ -299,6 +362,7 @@ export async function postLiveAnnouncementTest(env, discordId) {
   const stream = userId ? await getStreamByUserId(env, userId) : null;
 
   const payload = buildLiveAnnouncementPayload({
+    env,
     record,
     stream,
     login,
@@ -385,7 +449,10 @@ export async function unregisterStreamer(env, discordId) {
     deleteSubscription(env, subs.offline),
   ]);
 
-  if (env.STREAMER_ROLE_ID && env.GUILD_ID) {
+  // Official streamers have a synthetic discordId (`official:<twitchUserId>`)
+  // and no real Discord user behind them, so there's no @streamer role to
+  // remove. Skip the role API call to avoid a guaranteed 400 from Discord.
+  if (env.STREAMER_ROLE_ID && env.GUILD_ID && !record.isOfficial && !discordId.startsWith('official:')) {
     await removeGuildMemberRole(env, env.GUILD_ID, discordId, env.STREAMER_ROLE_ID);
   }
   return { existed: true, record };
@@ -409,13 +476,17 @@ export async function postRemovalAuditLog(env, info) {
   if (info.youtubeName) platforms.push({ name: 'YouTube', value: `\`${info.youtubeName}\``, inline: true });
 
   const ts = formatCentralAudit(new Date().toISOString());
+  const isSynthetic = String(info.targetId).startsWith('official:');
+  const targetField = isSynthetic
+    ? `${escapeMdAudit(info.targetName)} (official channel)`
+    : `<@${info.targetId}> (${escapeMdAudit(info.targetName)})`;
 
   const res = await postChannelMessage(env, channelId, {
     embeds: [{
       title: 'Streamer deregistered',
       color: 0xE07B00,
       fields: [
-        { name: 'Removed', value: `<@${info.targetId}> (${escapeMdAudit(info.targetName)})`, inline: false },
+        { name: 'Removed', value: targetField, inline: false },
         { name: 'By', value: `<@${info.actorId}> (${escapeMdAudit(info.actorName)})`, inline: false },
         ...platforms,
         { name: 'Reason', value: truncateAudit(info.reason, 1000), inline: false },
