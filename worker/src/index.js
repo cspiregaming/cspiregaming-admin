@@ -17,6 +17,7 @@ import {
   handleStreamAuthCallback,
   handleTwitchEventSub,
 } from './routes/streamers.js';
+import { runDailyGamesGrader } from './games-grader-scheduler.js';
 
 const ALLOWED_ORIGINS = [
   'https://cspiregaming.github.io',
@@ -27,6 +28,12 @@ const ALLOWED_ORIGINS = [
 ];
 
 export default {
+  async scheduled(event, env, ctx) {
+    // Currently a single cron — `*/1 * * * *` — drives the #daily-games
+    // grader. Add a switch on event.cron when more crons are added.
+    ctx.waitUntil(runDailyGamesGrader(env));
+  },
+
   async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin') || '';
     const corsOrigin = ALLOWED_ORIGINS.includes(origin) || origin.startsWith('http://localhost')

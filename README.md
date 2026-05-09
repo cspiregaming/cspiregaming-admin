@@ -72,6 +72,27 @@ Members with the configured requester roles (e.g. *C Spire Employee*, *Mods*) ca
 
 If `/request-event-publish` doesn't show up in Discord, the bot is missing the `applications.commands` scope — see [Discord application](#discord-application).
 
+### Daily-games auto-grader
+
+Boards posted in `#daily-games` (or whichever channel `DAILY_GAMES_CHANNEL_ID` points at) get an automatic emoji reaction with the score. Currently supports:
+
+- **Wordle** — header line `Wordle 1,234 N/6` (or `X/6`, optionally `*` for hard mode). Score is N.
+- **Framed** — `Framed #N` followed by a row of 6 squares; score is the 1-indexed position of the first 🟩 square. No 🟩 = miss.
+- **Connections** — `Connections … Puzzle #N` followed by 4-square rows. Solid same-color rows count as solved groups; mixed rows count as mistakes. Solved with 0–3 mistakes scores 1–4; ≥4 mistakes (or otherwise unsolved) is a miss.
+
+Score → emoji legend (Wordle/Framed scores 1–6, Connections 1–4, all share the miss icon):
+
+| Score | Emoji | | Score | Emoji |
+| --- | --- | --- | --- | --- |
+| 1 | 🌟 | | 5 | 🔸 |
+| 2 | ⭐ | | 6 | ▪️ |
+| 3 | 💫 | | Miss | ❌ |
+| 4 | ✴️ | | | |
+
+A Cloudflare Cron Trigger fires every minute, polls the channel for messages newer than the saved high-water mark (`CONTENT:daily_games_last_seen`), grades each parseable board, and reacts via REST. Bot-authored messages are skipped, so the Wordle Discord App's "your group is on a streak" announcements don't get a grade. Reactions are idempotent on Discord's side, so a manual re-poll won't double-stamp.
+
+The poller runs entirely on the worker's REST API, not a gateway connection, so the privileged Message Content Intent is **not** required — `GET /channels/{id}/messages` returns full content with just the bot's normal channel-read permissions.
+
 ### Streamer registration
 
 Members can self-register as streamers from Discord:
@@ -148,6 +169,7 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 | `CONTENT` | `event_publish_requests` | JSON object keyed by Discord interaction ID. Each entry: `{id, eventId, requestedBy, requestedAt, status: 'pending'\|'approved'\|'denied', channelId, channelMessageId, decidedBy?, decidedAt?, downgradeReason?}`. Pruned 30 days after `decidedAt`. |
 | `CONTENT` | `streamers` | JSON object keyed by Discord user ID. Each entry: `{discordId, discordUsername, displayName, registeredAt, updatedAt, twitch?: {userId, login, displayName, eventSubIds: {online, offline}}, youtube?: {channelId, name}}`. Written by the `/register-stream` OAuth callback; deleted by `/unregister-stream`. |
 | `CONTENT` | `streamers_by_twitch` | JSON object keyed by Twitch user ID → Discord user ID. Reverse index used by the EventSub webhook to resolve incoming `stream.online` notifications back to a streamer record. |
+| `CONTENT` | `daily_games_last_seen` | Last Discord message ID processed by the games-grader cron in `DAILY_GAMES_CHANNEL_ID`. Acts as a high-water mark so each tick only inspects messages newer than the previous run. Initialized to the most-recent message on first run (no historical backfill). |
 | `CONTENT` | `social` | JSON object `{discord, twitch, facebook, instagram, twitter, subscribe, exchange, status}` |
 | `CACHE` | `members_<guildId>` | cached members payload, TTL 300s |
 | `CACHE` | `discord_events_live` | cached normalized list of Discord scheduled events, TTL 300s |
@@ -244,6 +266,7 @@ The bot and OAuth app live in the same Discord application at https://discord.co
 - **Bot → Reset Token / Generate** if you need to rotate the bot token. Then run `wrangler secret put BOT_TOKEN`.
 - The bot must be invited to guild `379707231077138442` with **both** the `bot` and `applications.commands` scopes. Without `applications.commands`, slash commands silently won't appear in the picker. Re-invite URL: `https://discord.com/oauth2/authorize?client_id=<DISCORD_APP_ID>&scope=bot+applications.commands&permissions=0`.
 - Bot must have **View Server Members** for the members feature, and **View Channel + Send Messages + Embed Links** in the channels referenced by `OFFICERS_CHANNEL_ID` (publish-request flow) and `LIVE_ANNOUNCE_CHANNEL_ID` (Twitch live announcements).
+- Bot needs **View Channel + Read Message History + Add Reactions** in `DAILY_GAMES_CHANNEL_ID` for the daily-games auto-grader.
 - Bot needs **Manage Roles** in the guild, with the `@streamer` role positioned *below* the bot's highest role, so `/register-stream` can grant it.
 
 ### Twitch application
@@ -285,7 +308,7 @@ npx wrangler secret put TWITCH_CLIENT_SECRET   # Twitch app Client Secret
 npx wrangler secret put TWITCH_EVENTSUB_SECRET # Random ≥10-char string: openssl rand -hex 32
 ```
 
-Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, `REQUESTER_ROLE_IDS`, `MOD_ROLE_IDS`, `STREAMER_ROLE_ID`, and `LIVE_ANNOUNCE_CHANNEL_ID`.
+Then fill in the public-but-non-secret IDs in `wrangler.toml [vars]`: `DISCORD_APP_ID`, `OFFICERS_CHANNEL_ID`, `REQUESTER_ROLE_IDS`, `MOD_ROLE_IDS`, `STREAMER_ROLE_ID`, `LIVE_ANNOUNCE_CHANNEL_ID`, and `DAILY_GAMES_CHANNEL_ID`.
 
 Then `npx wrangler deploy` once manually so the worker exists, after which CI takes over.
 

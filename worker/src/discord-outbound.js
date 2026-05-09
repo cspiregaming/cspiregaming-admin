@@ -30,6 +30,21 @@ export async function removeGuildMemberRole(env, guildId, userId, roleId) {
   return discordRequest(env, 'DELETE', `/guilds/${guildId}/members/${userId}/roles/${roleId}`, null);
 }
 
+/**
+ * React to a message with a unicode emoji on the bot's behalf. The emoji must
+ * be passed in raw form (e.g. '🌟') — this helper URL-encodes it. For custom
+ * guild emoji, callers should pass `name:id` instead.
+ */
+export async function addReaction(env, channelId, messageId, emoji) {
+  const encoded = encodeURIComponent(emoji);
+  return discordRequest(
+    env,
+    'PUT',
+    `/channels/${channelId}/messages/${messageId}/reactions/${encoded}/@me`,
+    null,
+  );
+}
+
 async function discordRequest(env, method, path, payload) {
   const botToken = env.BOT_TOKEN;
   if (!botToken) {

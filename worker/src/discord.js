@@ -49,6 +49,26 @@ export async function fetchGuildMembers(env, guildId, roleIds) {
 }
 
 /**
+ * Fetch recent messages in a channel via REST. Returns up to `limit` messages
+ * (max 100). When `after` is provided, returns only messages created strictly
+ * after that snowflake — Discord orders the returned array newest-first
+ * regardless. Used by the daily-games scheduler to poll for new boards.
+ *
+ * REST `GET /channels/{id}/messages` returns full `content` regardless of the
+ * Message Content Intent (intents only gate gateway events).
+ */
+export async function fetchRecentMessages(env, channelId, { after, limit = 50 } = {}) {
+  const botToken = env.BOT_TOKEN;
+  if (!botToken) throw new Error('BOT_TOKEN secret is not configured');
+  const params = new URLSearchParams();
+  params.set('limit', String(Math.min(Math.max(1, limit), 100)));
+  if (after) params.set('after', after);
+  const res = await discordFetch(`/channels/${channelId}/messages?${params}`, botToken);
+  if (!res.ok) throw new Error(`Discord channel-messages fetch failed: ${res.status}`);
+  return res.json();
+}
+
+/**
  * Fetch the guild's custom emoji list, cached 1 hour. Each entry is the raw
  * Discord shape: `{id, name, animated, available, ...}`. Bots can use any
  * emoji from any guild they're in, so callers building message content can

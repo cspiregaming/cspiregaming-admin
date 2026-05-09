@@ -3,6 +3,12 @@ main = "src/index.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
+# Cron triggers. Currently:
+#   - games-grader: polls #daily-games every minute, grades new boards
+#     (Wordle / Framed / Connections) and reacts with the score emoji.
+[triggers]
+crons = ["*/1 * * * *"]
+
 # Non-secret config. Edit + redeploy to change.
 [vars]
 GUILD_ID = "379707231077138442"
@@ -32,7 +38,10 @@ MOD_ROLE_IDS = "379713136082550805,1063322558562304141,961330657114607646"
 STREAMER_ROLE_ID = "REPLACE_WITH_STREAMER_ROLE_ID"
 # Channel where Twitch live announcements get posted. Bot needs View Channel +
 # Send Messages + Embed Links here.
-LIVE_ANNOUNCE_CHANNEL_ID = "REPLACE_WITH_LIVE_ANNOUNCE_CHANNEL_ID"
+LIVE_ANNOUNCE_CHANNEL_ID = "1135732789132673066"
+# Channel polled by the games-grader cron. Bot needs View Channel + Read
+# Message History + Add Reactions here.
+DAILY_GAMES_CHANNEL_ID = "937590181672935454"
 # Optional override for the worker's public origin. Used to build the OAuth
 # redirect URI for /register-stream and the Twitch EventSub callback URL.
 # Defaults to https://api.cspiregaming.com.
