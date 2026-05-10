@@ -325,7 +325,10 @@ export async function handleAdminStreamers(request, env) {
   const session = await requireAuth(request, env);
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean); // ['api','admin','streamers', maybe id, maybe action]
-  const targetId = parts[3] || null;
+  // url.pathname doesn't decode percent-escapes — synthetic IDs like
+  // `official:<twitchUserId>` arrive as `official%3A<id>`, so decode here
+  // before using as a KV key.
+  const targetId = parts[3] ? safeDecode(parts[3]) : null;
   const action = parts[4] || null;
 
   if (request.method === 'GET' && !targetId) {
@@ -382,6 +385,10 @@ export async function handleAdminStreamers(request, env) {
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function safeDecode(s) {
+  try { return decodeURIComponent(s); } catch { return s; }
+}
 
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
