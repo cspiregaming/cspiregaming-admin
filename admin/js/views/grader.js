@@ -29,20 +29,6 @@ export async function renderGrader(container) {
   const parserTypes = payload.parserTypes;
   const legendKeys = payload.legendKeys;
 
-  // Load guild emoji catalog lazily — used by the Available Emojis panel.
-  let guildEmojis = null;
-  const loadEmojis = async () => {
-    if (guildEmojis) return guildEmojis;
-    try {
-      const { emojis } = await api.getEmojis();
-      guildEmojis = emojis;
-    } catch (err) {
-      guildEmojis = [];
-      console.warn('Could not load guild emojis:', err);
-    }
-    return guildEmojis;
-  };
-
   function render() {
     container.innerHTML = `
       <div class="card__header">
@@ -59,7 +45,8 @@ export async function renderGrader(container) {
         <h2>Legend</h2>
         <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
           Reaction emoji for each score (lower&nbsp;=&nbsp;better). Boards with a max score below 6 just never use the higher entries.
-          Each cell can hold a single unicode emoji <em>or</em> a Discord custom-emoji reference in <code>name:id</code> form.
+          Each cell can hold a single unicode emoji <em>or</em> a Discord custom-emoji reference in <code>name:id</code> form
+          — see <a href="#" data-nav="emojis">Custom Emojis</a> for the bot's available catalog.
         </p>
         <div class="grader-legend-grid" id="legend-grid">
           ${legendKeys.map(renderLegendRow).join('')}
@@ -94,24 +81,22 @@ export async function renderGrader(container) {
           <div id="test-result" style="flex:1"></div>
         </div>
       </div>
-
-      <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
-          <h2 style="margin:0">Available Custom Emojis</h2>
-          <button class="btn btn-outline" id="btn-toggle-emojis">Show</button>
-        </div>
-        <p style="color:var(--text-muted);font-size:13px;margin:0">
-          Custom emojis the bot can use in this guild. Click any to copy its <code>name:id</code> reaction string.
-        </p>
-        <div id="emoji-catalog" style="display:none;margin-top:16px"></div>
-      </div>
     `;
 
     wireLegend();
     wireBoards();
     wireTest();
-    wireEmojiCatalog();
     wireSave();
+    wireInternalNav();
+  }
+
+  function wireInternalNav() {
+    container.querySelectorAll('[data-nav]').forEach(el => {
+      el.addEventListener('click', e => {
+        e.preventDefault();
+        import('../app.js').then(m => m.navigateTo(el.dataset.nav));
+      });
+    });
   }
 
   function renderLegendRow(key) {
@@ -326,48 +311,6 @@ export async function renderGrader(container) {
         <code style="font-size:11px;color:var(--text-muted)">${escHtml(grade.emoji)}</code>
       </div>
     `;
-  }
-
-  function wireEmojiCatalog() {
-    const toggle = container.querySelector('#btn-toggle-emojis');
-    const panel = container.querySelector('#emoji-catalog');
-    if (!toggle || !panel) return;
-    toggle.addEventListener('click', async () => {
-      const showing = panel.style.display !== 'none';
-      if (showing) {
-        panel.style.display = 'none';
-        toggle.textContent = 'Show';
-        return;
-      }
-      panel.style.display = 'block';
-      toggle.textContent = 'Hide';
-      panel.innerHTML = '<div class="loading">Loading guild emojis…</div>';
-      const emojis = await loadEmojis();
-      if (!emojis.length) {
-        panel.innerHTML = '<p style="color:var(--text-muted)">No custom emojis available, or the bot can\'t see them.</p>';
-        return;
-      }
-      panel.innerHTML = `
-        <div class="emoji-grid">
-          ${emojis.map(e => `
-            <button type="button" class="emoji-grid__cell" data-emoji="${escHtml(e.reaction)}" title="${escHtml(e.name)} — click to copy ${escHtml(e.reaction)}">
-              <img src="${escHtml(e.url)}" alt="${escHtml(e.name)}" loading="lazy">
-              <span>${escHtml(e.name)}</span>
-            </button>
-          `).join('')}
-        </div>
-      `;
-      panel.querySelectorAll('[data-emoji]').forEach(btn => {
-        btn.addEventListener('click', async () => {
-          try {
-            await navigator.clipboard.writeText(btn.dataset.emoji);
-            const old = btn.querySelector('span').textContent;
-            btn.querySelector('span').textContent = 'Copied!';
-            setTimeout(() => { btn.querySelector('span').textContent = old; }, 900);
-          } catch {}
-        });
-      });
-    });
   }
 
   function wireSave() {

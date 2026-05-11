@@ -69,11 +69,11 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
   - **Test Embed** — appears only on rows with a Twitch link. Posts a preview of the live-announcement embed to `BOT_LOGS_CHANNEL_ID` so you can see exactly what an announcement looks like without firing it in the public live-announce channel. The preview is identical to the real embed except (a) it doesn't ping anyone and (b) the lead text reads "_Preview — {name} would be live on Twitch_". If the streamer is currently live, it pulls the real title/game/thumbnail; if offline, it falls back to placeholder text with the same layout.
   - **Add Official Streamer** — for Twitch channels that don't have a Discord user (e.g. the C Spire Gaming Twitch account itself). Enter the Twitch login, hit Register, and the bot creates an `isOfficial: true` streamer record (synthetic `discordId = official:<twitchUserId>`), wires up Twitch EventSub, and tags `@csg stream notifications` instead of `@community stream notifications` when this channel goes live. Idempotent — re-registering the same login is safe.
 - **Daily Games** *(officers and mods)* — controls for the auto-grader described below. Three panels:
-  - **Legend** — edit the score-1..6 + miss emoji reactions. Each cell accepts a single unicode emoji (e.g. `🌟`) or a Discord custom-emoji reference in `name:id` form (e.g. `csgwin:123456789012345678`).
+  - **Legend** — edit the score-1..6 + miss emoji reactions. Each cell accepts a single unicode emoji (e.g. `🌟`) or a Discord custom-emoji reference in `name:id` form (e.g. `csgwin:123456789012345678`). Use **Custom Emojis** in the sidebar to find the right `name:id`.
   - **Boards** — add / edit / remove the boards the grader recognizes. Each board picks a built-in parser type (`wordle`, `framed`, `connections`) and a header regex that identifies it. New `wordle`-type boards (e.g. Strands) just need the right regex with a capture group for the score token.
   - **Test** — paste a Discord message body and click **Grade it** to see what the current draft (saved or unsaved) would react with. No need to save first.
-  - **Available Custom Emojis** *(expandable panel)* — the bot's view of the guild's custom emojis. Click any to copy its `name:id` so you can paste it into the legend.
   Saves take effect on the next cron tick (≤ 1 minute).
+- **Custom Emojis** *(officers and mods)* — read-only catalog of every custom emoji the bot can see in the guild, filterable by name/ID and split by static vs. animated. Click any cell to copy its `name:id` reaction string — the format anywhere the worker (or the Daily Games legend) accepts a custom emoji. The list is cached for one hour from Discord.
 
 ### Event publish requests
 
