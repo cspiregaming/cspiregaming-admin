@@ -71,9 +71,52 @@ export async function requireAuth(request, env) {
   return payload;
 }
 
+/**
+ * Compute the access tier of a signed-in user from their JWT payload.
+ *  - 'officer' → has ADMIN_ROLE_ID
+ *  - 'mod'     → holds any role listed in MOD_ROLE_IDS (but not ADMIN_ROLE_ID)
+ *  - null      → neither (shouldn't normally happen — sign-in gate rejects)
+ *
+ * Legacy tokens (issued before we started embedding `roles` in the JWT) were
+ * only handed out to ADMIN_ROLE_ID holders, so treat a missing `roles` array
+ * as 'officer'.
+ */
+export function getTier(payload, env) {
+  if (!payload?.roles) return 'officer';
+  const adminRoleId = env.ADMIN_ROLE_ID;
+  if (adminRoleId && payload.roles.includes(adminRoleId)) return 'officer';
+  const modRoleIds = parseRoleList(env.MOD_ROLE_IDS);
+  if (modRoleIds.some(r => r !== adminRoleId && payload.roles.includes(r))) return 'mod';
+  return null;
+}
+
+export async function requireOfficer(request, env) {
+  const payload = await requireAuth(request, env);
+  if (getTier(payload, env) === 'officer') return payload;
+  throw forbiddenResponse('Officer access required.');
+}
+
+export async function requireMod(request, env) {
+  const payload = await requireAuth(request, env);
+  const tier = getTier(payload, env);
+  if (tier === 'officer' || tier === 'mod') return payload;
+  throw forbiddenResponse('Officer or mod access required.');
+}
+
+export function parseRoleList(commaList) {
+  return (commaList || '').split(',').map(s => s.trim()).filter(Boolean);
+}
+
 function unauthorizedResponse() {
   return new Response(JSON.stringify({ error: 'Unauthorized' }), {
     status: 401,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
+
+function forbiddenResponse(message) {
+  return new Response(JSON.stringify({ error: message || 'Forbidden' }), {
+    status: 403,
     headers: { 'Content-Type': 'application/json' },
   });
 }

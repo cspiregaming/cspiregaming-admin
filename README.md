@@ -34,14 +34,19 @@ Admin SPA ──────────────┘       │
 
 1. Open http://cspiregaming.csgitpages.cspire.net/cspiregaming-workers/.
 2. Click **Sign in with Discord**, authorize the app.
-3. You're in if (a) you're a member of the C Spire Gaming guild and (b) you have the configured Admin Role.
+3. You're in if you're a member of the C Spire Gaming guild AND you hold either (a) the configured Admin Role (officer), or (b) any role listed in `MOD_ROLE_IDS` (mod).
+
+Access tiers:
+
+- **Officer** (`ADMIN_ROLE_ID`) — full access to every section.
+- **Mod** (`MOD_ROLE_IDS`) — limited to **Daily Games** and **Settings**. Other sidebar items are hidden, and the worker rejects writes to officer-only endpoints with `403 Officer access required`.
 
 If sign-in fails:
 
 | Error | Meaning | Fix |
 | --- | --- | --- |
 | "You cancelled the Discord login." | You denied the OAuth prompt. | Click sign-in again. |
-| "Your Discord account does not have officer access to this server." | You don't have the configured Admin Role. | Have an existing officer assign you that role in Discord, then sign in again. |
+| "Your Discord account does not have officer or mod access to this server." | You don't have any of the configured roles. | Have an existing officer give you the Admin Role or a Mod role in Discord, then sign in again. |
 | Stuck on a Discord error page | The redirect URI isn't registered in the Discord app. | Developer task — see [Discord application](#discord-application). |
 
 ### Granting officer access to someone
@@ -63,6 +68,12 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
 - **Streamers** — table of every member registered with the bot via `/register-stream`, plus any official channels registered through this section. Click **Deregister** on a row to remove someone (the SPA prompts for a reason, ≥10 chars, which gets posted to the officers channel as an audit-log embed). Same teardown as `/streamer-remove`: the @streamer role (skipped for official channels — no Discord user), EventSub subscriptions, and KV record all drop together.
   - **Test Embed** — appears only on rows with a Twitch link. Posts a preview of the live-announcement embed to `BOT_LOGS_CHANNEL_ID` so you can see exactly what an announcement looks like without firing it in the public live-announce channel. The preview is identical to the real embed except (a) it doesn't ping anyone and (b) the lead text reads "_Preview — {name} would be live on Twitch_". If the streamer is currently live, it pulls the real title/game/thumbnail; if offline, it falls back to placeholder text with the same layout.
   - **Add Official Streamer** — for Twitch channels that don't have a Discord user (e.g. the C Spire Gaming Twitch account itself). Enter the Twitch login, hit Register, and the bot creates an `isOfficial: true` streamer record (synthetic `discordId = official:<twitchUserId>`), wires up Twitch EventSub, and tags `@csg stream notifications` instead of `@community stream notifications` when this channel goes live. Idempotent — re-registering the same login is safe.
+- **Daily Games** *(officers and mods)* — controls for the auto-grader described below. Three panels:
+  - **Legend** — edit the score-1..6 + miss emoji reactions. Each cell accepts a single unicode emoji (e.g. `🌟`) or a Discord custom-emoji reference in `name:id` form (e.g. `csgwin:123456789012345678`).
+  - **Boards** — add / edit / remove the boards the grader recognizes. Each board picks a built-in parser type (`wordle`, `framed`, `connections`) and a header regex that identifies it. New `wordle`-type boards (e.g. Strands) just need the right regex with a capture group for the score token.
+  - **Test** — paste a Discord message body and click **Grade it** to see what the current draft (saved or unsaved) would react with. No need to save first.
+  - **Available Custom Emojis** *(expandable panel)* — the bot's view of the guild's custom emojis. Click any to copy its `name:id` so you can paste it into the legend.
+  Saves take effect on the next cron tick (≤ 1 minute).
 
 ### Event publish requests
 
@@ -76,13 +87,13 @@ If `/request-event-publish` doesn't show up in Discord, the bot is missing the `
 
 ### Daily-games auto-grader
 
-Boards posted in `#daily-games` (or whichever channel `DAILY_GAMES_CHANNEL_ID` points at) get an automatic emoji reaction with the score. Currently supports:
+Boards posted in `#daily-games` (or whichever channel `DAILY_GAMES_CHANNEL_ID` points at) get an automatic emoji reaction with the score. The set of recognized boards and the score → emoji legend live in `CONFIG:grader_config` and are editable from the **Daily Games** admin section (officers + mods). Defaults out of the box:
 
 - **Wordle** — header line `Wordle 1,234 N/6` (or `X/6`, optionally `*` for hard mode). Score is N.
 - **Framed** — `Framed #N` followed by a row of 6 squares; score is the 1-indexed position of the first 🟩 square. No 🟩 = miss.
 - **Connections** — `Connections … Puzzle #N` followed by 4-square rows. Solid same-color rows count as solved groups; mixed rows count as mistakes. Solved with 0–3 mistakes scores 1–4; ≥4 mistakes (or otherwise unsolved) is a miss.
 
-Score → emoji legend (Wordle/Framed scores 1–6, Connections 1–4, all share the miss icon):
+Default score → emoji legend (Wordle/Framed scores 1–6, Connections 1–4, all share the miss icon):
 
 | Score | Emoji | | Score | Emoji |
 | --- | --- | --- | --- | --- |
@@ -91,7 +102,13 @@ Score → emoji legend (Wordle/Framed scores 1–6, Connections 1–4, all share
 | 3 | 💫 | | Miss | ❌ |
 | 4 | ✴️ | | | |
 
-A Cloudflare Cron Trigger fires every minute, polls the channel for messages newer than the saved high-water mark (`CONTENT:daily_games_last_seen`), grades each parseable board, and reacts via REST. Bot-authored messages are skipped, so the Wordle Discord App's "your group is on a streak" announcements don't get a grade. Reactions are idempotent on Discord's side, so a manual re-poll won't double-stamp.
+**Parser types** are built-in and not user-editable (adding a brand-new shape needs code in `worker/src/games-grader.js`). Existing types officers can plug new boards into:
+
+- `wordle` — header regex must contain exactly one capture group; that group is the score token (digit or `X`). Score is the digit.
+- `framed` — header regex is a presence gate. Scoring looks for the first 🟩 in any line containing 6 🟥/🟩/⬛ squares.
+- `connections` — header regex is a presence gate. Also requires a `Puzzle #N` line. Scoring counts solid-same-color rows (groups solved) and mixed rows (mistakes).
+
+A Cloudflare Cron Trigger fires every minute, polls the channel for messages newer than the saved high-water mark (`CONTENT:daily_games_last_seen`), grades each parseable board, and reacts via REST. Bot-authored messages are skipped, so the Wordle Discord App's "your group is on a streak" announcements don't get a grade. Reactions are idempotent on Discord's side, so a manual re-poll won't double-stamp. Config changes take effect on the next tick (≤ 1 minute).
 
 The poller runs entirely on the worker's REST API, not a gateway connection, so the privileged Message Content Intent is **not** required — `GET /channels/{id}/messages` returns full content with just the bot's normal channel-read permissions.
 
@@ -167,6 +184,7 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 | --- | --- | --- |
 | `CONFIG` | `role_ids` | JSON array of Discord role IDs to show publicly. Written by Roles Config in the admin UI. |
 | `CONFIG` | `default_role_id` | Optional Discord role ID that should be the active filter chip on first load of the public Members section. Absent (or unset) means "All Members". |
+| `CONFIG` | `grader_config` | JSON `{legend: {score1..score6, miss}, boards: [{id, name, parserType, headerRegex}]}` driving the daily-games grader. Written by the Daily Games admin view; falls back to in-code defaults if absent. |
 | `CONTENT` | `officers` | JSON array of `{id, name, image, about, order, createdAt, updatedAt?}` |
 | `CONTENT` | `events` | JSON array of `{id, title, subtitle, description, actionButtonText, actionButtonUrl, googleMapsUrl, imagePath, createdAt, updatedAt?}` |
 | `CONTENT` | `discord_event_overlays` | JSON object keyed by Discord scheduled-event ID. Each entry: `{published, actionButtonText?, actionButtonUrl?}`. Only events with `published === true` show on the public site. Empty entries are deleted. |
@@ -185,6 +203,8 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 
 All admin endpoints require a valid `admin_token` cookie (set by the OAuth callback) or a `Bearer` JWT in `Authorization`. Public endpoints have no auth.
 
+The OAuth callback admits members with **either** `ADMIN_ROLE_ID` (officer) or any role in `MOD_ROLE_IDS` (mod). The user's full Discord role list is embedded in the JWT, and per-endpoint middleware (`requireOfficer` / `requireMod` in `worker/src/auth.js`) enforces tier. Endpoints below are marked *Officer* (admin-only) or *Mod or officer* (both tiers); the unmarked auth helpers default to *Officer*.
+
 | Method | Path | Notes |
 | --- | --- | --- |
 | POST | `/api/interactions` | Discord interactions endpoint. Verifies Ed25519 signatures via `DISCORD_PUBLIC_KEY`. Handles PING, slash commands (`/request-event-publish`, `/register-stream`, `/unregister-stream`, `/streamer-list`, `/streamer-remove`, `/parrotbomb`), button clicks (Approve/Deny on the officers-channel post), and autocomplete. Discord-only — not called by the SPA or public site. |
@@ -196,7 +216,10 @@ All admin endpoints require a valid `admin_token` cookie (set by the OAuth callb
 | GET | `/api/auth/callback` | Discord redirects here. Sets `admin_token` cookie, redirects to `ADMIN_URL`. |
 | POST | `/api/auth/logout` | Clears the `admin_token` cookie. |
 | GET, PUT | `/api/admin/config` | GET returns `{guild_id, role_ids, default_role_id, bot_token_set, jwt_secret_set}` for the dashboard/settings views. PUT accepts `{role_ids, default_role_id}` (both optional, used by Roles Config); `default_role_id` is cleared when set to `null`, `"all"`, or a role ID not present in the saved `role_ids`. Also invalidates the member cache. |
-| GET | `/api/admin/roles` | All roles in the guild via the bot, minus `@everyone`. Used by Roles Config. |
+| GET | `/api/admin/roles` | All roles in the guild via the bot, minus `@everyone`. Used by Roles Config. *Officer.* |
+| GET, PUT | `/api/admin/grader` | GET returns `{config, defaults, parserTypes, legendKeys}`. PUT replaces `CONFIG:grader_config` after schema validation. *Mod or officer.* |
+| POST | `/api/admin/grader/test` | Body: `{content, config?}`. Runs the grader against `content` using the supplied draft `config` (if any) or the saved one. Returns `{grade}` where `grade` is `null` or `{game, score, emoji, fail}`. *Mod or officer.* |
+| GET | `/api/admin/emojis` | Returns the guild's custom-emoji catalog as `{id, name, animated, available, reaction, url}`. Used by the Daily Games view's emoji picker. *Mod or officer.* |
 | GET | `/api/admin/members` | Same as public, but bypasses cache. `?format=csv` exports CSV. |
 | GET, POST | `/api/admin/officers` | List or create. POST returns the new item with a generated `id`. |
 | GET, PUT, DELETE | `/api/admin/officers/{id}` | Read, update, or delete one officer. |

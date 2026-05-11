@@ -7,10 +7,14 @@ import { renderEvents } from './views/events.js';
 import { renderSocial } from './views/social.js';
 import { renderSettings } from './views/settings.js';
 import { renderStreamers } from './views/streamers.js';
+import { renderGrader } from './views/grader.js';
 
 // ─── State ──────────────────────────────────────────────────────
 let currentSection = 'dashboard';
 let sessionUser = null;
+let sessionTier = 'officer'; // 'officer' | 'mod'
+
+export function getSessionTier() { return sessionTier; }
 
 // ─── Bootstrap ──────────────────────────────────────────────────
 document.addEventListener('DOMContentLoaded', async () => {
@@ -27,7 +31,10 @@ document.addEventListener('DOMContentLoaded', async () => {
   // We validate by calling a lightweight admin endpoint
   try {
     const config = await api.getConfig();
-    // If we get here, we're authenticated
+    if (config.session) {
+      sessionUser = { id: config.session.userId, displayName: config.session.displayName };
+      sessionTier = config.session.tier || 'officer';
+    }
     renderApp();
   } catch {
     renderLogin();
@@ -62,13 +69,32 @@ function showLoginError(error) {
   if (!el) return;
   const messages = {
     oauth_denied: 'You cancelled the Discord login.',
-    not_authorized: 'Your Discord account does not have officer access to this server.',
+    not_authorized: 'Your Discord account does not have officer or mod access to this server.',
   };
   el.innerHTML = `<div class="alert alert-error">${messages[error] || 'Login failed. Please try again.'}</div>`;
 }
 
 // ─── Main app shell ──────────────────────────────────────────────
+//
+// Each nav entry declares `tiers: ['officer']` or `['officer','mod']`. Mods
+// see only the mod-allowed sections; officers see everything.
+const NAV_ITEMS = [
+  { section: 'dashboard',  icon: '📊', label: 'Dashboard',     tiers: ['officer'] },
+  { section: 'members',    icon: '👥', label: 'Members',       tiers: ['officer'] },
+  { section: 'roles',      icon: '🏷️', label: 'Roles Config',   tiers: ['officer'] },
+  { section: 'officers',   icon: '⭐', label: 'Officers',       tiers: ['officer'] },
+  { section: 'events',     icon: '📅', label: 'Events',         tiers: ['officer'] },
+  { section: 'streamers',  icon: '🎮', label: 'Streamers',      tiers: ['officer'] },
+  { section: 'grader',     icon: '🎯', label: 'Daily Games',    tiers: ['officer', 'mod'] },
+  { section: 'social',     icon: '🔗', label: 'Social Links',   tiers: ['officer'] },
+  { section: 'settings',   icon: '⚙️', label: 'Settings',       tiers: ['officer', 'mod'] },
+];
+
 function renderApp() {
+  const visibleNav = NAV_ITEMS.filter(item => item.tiers.includes(sessionTier));
+  const firstSection = visibleNav[0]?.section || 'grader';
+  const tierLabel = sessionTier === 'officer' ? 'Officer' : 'Mod';
+
   document.body.innerHTML = `
     <div class="app">
       <nav class="sidebar">
@@ -77,43 +103,20 @@ function renderApp() {
           <span>CSG Admin</span>
         </div>
 
-        <div class="nav-item is-active" data-section="dashboard">
-          <span class="nav-item__icon">📊</span>
-          <span>Dashboard</span>
-        </div>
-        <div class="nav-item" data-section="members">
-          <span class="nav-item__icon">👥</span>
-          <span>Members</span>
-        </div>
-        <div class="nav-item" data-section="roles">
-          <span class="nav-item__icon">🏷️</span>
-          <span>Roles Config</span>
-        </div>
-        <div class="nav-item" data-section="officers">
-          <span class="nav-item__icon">⭐</span>
-          <span>Officers</span>
-        </div>
-        <div class="nav-item" data-section="events">
-          <span class="nav-item__icon">📅</span>
-          <span>Events</span>
-        </div>
-        <div class="nav-item" data-section="streamers">
-          <span class="nav-item__icon">🎮</span>
-          <span>Streamers</span>
-        </div>
-        <div class="nav-item" data-section="social">
-          <span class="nav-item__icon">🔗</span>
-          <span>Social Links</span>
-        </div>
-        <div class="nav-item" data-section="settings">
-          <span class="nav-item__icon">⚙️</span>
-          <span>Settings</span>
-        </div>
+        ${visibleNav.map((item, idx) => `
+          <div class="nav-item ${idx === 0 ? 'is-active' : ''}" data-section="${item.section}">
+            <span class="nav-item__icon">${item.icon}</span>
+            <span>${item.label}</span>
+          </div>
+        `).join('')}
 
         <div class="sidebar__spacer"></div>
 
         <div class="sidebar__user" id="sidebar-user">
-          <span style="color:var(--text-muted);font-size:12px">Logged in</span>
+          <span style="color:var(--text-muted);font-size:12px">
+            Signed in${sessionUser ? ` · ${escHtml(sessionUser.displayName)}` : ''}
+            <br><span class="badge ${sessionTier === 'officer' ? 'badge-green' : 'badge-muted'}" style="margin-top:4px">${tierLabel}</span>
+          </span>
         </div>
       </nav>
 
@@ -128,7 +131,7 @@ function renderApp() {
     el.addEventListener('click', () => navigateTo(el.dataset.section));
   });
 
-  navigateTo('dashboard');
+  navigateTo(firstSection);
 }
 
 export function navigateTo(section) {
@@ -147,6 +150,7 @@ export function navigateTo(section) {
     officers: renderOfficers,
     events: renderEvents,
     streamers: renderStreamers,
+    grader: renderGrader,
     social: renderSocial,
     settings: renderSettings,
   };

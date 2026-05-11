@@ -99,4 +99,15 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ twitchLogin }),
     }),
+
+  // Daily-games grader
+  getGrader: () => apiFetch('/api/admin/grader'),
+  putGrader: config => apiFetch('/api/admin/grader', { method: 'PUT', body: JSON.stringify(config) }),
+  testGrader: (content, config) => apiFetch('/api/admin/grader/test', {
+    method: 'POST',
+    body: JSON.stringify(config ? { content, config } : { content }),
+  }),
+
+  // Bot guild emoji catalog (read-only)
+  getEmojis: () => apiFetch('/api/admin/emojis'),
 };

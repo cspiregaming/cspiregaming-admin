@@ -377,6 +377,101 @@ tbody tr:hover td { background: var(--surface-raised); }
 /* ─── Drag handle for reordering ──────────────────────────────── */
 .drag-handle { cursor: grab; color: var(--text-muted); padding: 0 4px; user-select: none; }
 
+/* ─── Daily Games grader ──────────────────────────────────────── */
+
+.grader-legend-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.grader-legend-row {
+  display: grid;
+  grid-template-columns: 90px 36px 1fr;
+  align-items: center;
+  gap: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+
+.grader-legend-row__label {
+  color: var(--text-muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  font-weight: 600;
+}
+
+.grader-legend-row__preview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+}
+
+.grader-legend-row__input {
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+/* Add Board modal */
+.grader-board-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.grader-board-dialog__backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.grader-board-dialog__panel {
+  position: relative;
+  width: min(560px, 90vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* Available Custom Emojis grid */
+.emoji-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+  gap: 10px;
+}
+
+.emoji-grid__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 6px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 11px;
+  transition: border-color .15s, background .15s;
+}
+
+.emoji-grid__cell:hover { border-color: var(--blue); background: var(--blue-dim); }
+.emoji-grid__cell img { width: 32px; height: 32px; object-fit: contain; }
+.emoji-grid__cell span {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
 /* ─── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 768px) {
   .sidebar { width: 64px; }

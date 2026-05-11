@@ -11,6 +11,8 @@ import {
   handleAdminDiscordEvents,
   handleAdminSocial,
   handleAdminStreamers,
+  handleAdminGrader,
+  handleAdminEmojis,
 } from './routes/admin.js';
 import { handleInteractions } from './routes/interactions.js';
 import {
@@ -94,6 +96,8 @@ async function route(request, env, ctx) {
   if (path.startsWith('/api/admin/events')) return handleAdminEvents(request, env);
   if (path === '/api/admin/social') return handleAdminSocial(request, env);
   if (path.startsWith('/api/admin/streamers')) return handleAdminStreamers(request, env);
+  if (path.startsWith('/api/admin/grader')) return handleAdminGrader(request, env);
+  if (path === '/api/admin/emojis') return handleAdminEmojis(request, env);
 
   return new Response(JSON.stringify({ error: 'Not found' }), {
     status: 404,

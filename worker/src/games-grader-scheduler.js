@@ -21,6 +21,7 @@
 import { fetchRecentMessages } from './discord.js';
 import { addReaction } from './discord-outbound.js';
 import { gradeMessage } from './games-grader.js';
+import { loadGraderConfig } from './grader-config.js';
 
 const STATE_KEY = 'daily_games_last_seen';
 
@@ -31,7 +32,10 @@ export async function runDailyGamesGrader(env) {
     return;
   }
 
-  const lastSeen = await env.CONTENT.get(STATE_KEY);
+  const [lastSeen, graderConfig] = await Promise.all([
+    env.CONTENT.get(STATE_KEY),
+    loadGraderConfig(env),
+  ]);
 
   let messages;
   try {
@@ -63,7 +67,7 @@ export async function runDailyGamesGrader(env) {
     if (snowflakeCompare(msg.id, highWater) > 0) highWater = msg.id;
 
     if (msg.author?.bot) continue;
-    const grade = gradeMessage(msg.content);
+    const grade = gradeMessage(msg.content, graderConfig);
     if (!grade) continue;
 
     const r = await addReaction(env, channelId, msg.id, grade.emoji);

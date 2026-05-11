@@ -1,9 +1,11 @@
-import { requireAuth, buildOAuthUrl, signJwt } from '../auth.js';
-import { discordOAuthExchange, fetchGuildMembers } from '../discord.js';
+import { requireAuth, requireOfficer, requireMod, getTier, parseRoleList, buildOAuthUrl, signJwt } from '../auth.js';
+import { discordOAuthExchange, fetchGuildEmojis, fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 import * as eventPublishRequests from '../event-publish-requests.js';
 import * as streamerRegistry from '../streamers.js';
 import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest, registerOfficialStreamer } from './streamers.js';
+import { loadGraderConfig, saveGraderConfig, validateGraderConfig, DEFAULT_GRADER_CONFIG } from '../grader-config.js';
+import { gradeMessage } from '../games-grader.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -30,9 +32,15 @@ export async function handleAuthCallback(request, env) {
 
   const { user, member } = await discordOAuthExchange(env, code, redirectUri);
 
-  // Verify user has the configured admin role
+  // Sign-in gate: officers (ADMIN_ROLE_ID) and mods (any MOD_ROLE_IDS role)
+  // can sign in. Mods get a narrower set of admin actions enforced per-endpoint
+  // via requireOfficer / requireMod.
   const adminRoleId = env.ADMIN_ROLE_ID;
-  if (adminRoleId && !member.roles.includes(adminRoleId)) {
+  const modRoleIds = parseRoleList(env.MOD_ROLE_IDS);
+  const memberRoles = member.roles || [];
+  const isOfficer = adminRoleId && memberRoles.includes(adminRoleId);
+  const isMod = modRoleIds.some(r => memberRoles.includes(r));
+  if (adminRoleId && !isOfficer && !isMod) {
     return Response.redirect(`${adminUrl}/?error=not_authorized`, 302);
   }
 
@@ -43,6 +51,7 @@ export async function handleAuthCallback(request, env) {
     sub: user.id,
     username: user.username,
     displayName: user.global_name || user.username,
+    roles: memberRoles,
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 86400 * 7, // 7 days
   };
@@ -71,9 +80,8 @@ export async function handleAuthLogout(request, env) {
 // ─── Admin endpoints (all require auth) ─────────────────────────────────────
 
 export async function handleAdminConfig(request, env) {
-  const session = await requireAuth(request, env);
-
   if (request.method === 'GET') {
+    const session = await requireAuth(request, env);
     const [roleIdsRaw, defaultRoleId] = await Promise.all([
       env.CONFIG.get('role_ids'),
       env.CONFIG.get('default_role_id'),
@@ -84,10 +92,16 @@ export async function handleAdminConfig(request, env) {
       default_role_id: defaultRoleId || null,
       bot_token_set: !!(env.BOT_TOKEN),
       jwt_secret_set: !!(env.JWT_SECRET),
+      session: {
+        userId: session.sub,
+        displayName: session.displayName || session.username,
+        tier: getTier(session, env),
+      },
     });
   }
 
   if (request.method === 'PUT') {
+    await requireOfficer(request, env);
     const body = await request.json();
     let cacheDirty = false;
 
@@ -119,7 +133,7 @@ export async function handleAdminConfig(request, env) {
 }
 
 export async function handleAdminRoles(request, env) {
-  await requireAuth(request, env);
+  await requireOfficer(request, env);
 
   const botToken = env.BOT_TOKEN;
   if (!botToken) return jsonResponse({ error: 'BOT_TOKEN not configured' }, 500);
@@ -150,7 +164,7 @@ export async function handleAdminRoles(request, env) {
 }
 
 export async function handleAdminMembers(request, env) {
-  const session = await requireAuth(request, env);
+  const session = await requireOfficer(request, env);
   const url = new URL(request.url);
 
   const guildId = env.GUILD_ID;
@@ -182,17 +196,17 @@ export async function handleAdminMembers(request, env) {
 }
 
 export async function handleAdminOfficers(request, env) {
-  const session = await requireAuth(request, env);
+  const session = await requireOfficer(request, env);
   return handleCrudCollection(request, env, 'officers');
 }
 
 export async function handleAdminEvents(request, env) {
-  const session = await requireAuth(request, env);
+  const session = await requireOfficer(request, env);
   return handleCrudCollection(request, env, 'events');
 }
 
 export async function handleAdminDiscordEvents(request, env) {
-  const session = await requireAuth(request, env);
+  const session = await requireOfficer(request, env);
   const url = new URL(request.url);
   const pathParts = url.pathname.split('/').filter(Boolean);
   // /api/admin/discord-events            → pathParts[2] === 'discord-events', no id
@@ -248,7 +262,7 @@ export async function handleAdminDiscordEvents(request, env) {
 }
 
 export async function handleAdminSocial(request, env) {
-  const session = await requireAuth(request, env);
+  const session = await requireOfficer(request, env);
 
   if (request.method === 'GET') {
     const raw = await env.CONTENT.get('social');
@@ -260,6 +274,100 @@ export async function handleAdminSocial(request, env) {
     return jsonResponse({ ok: true });
   }
   return methodNotAllowed();
+}
+
+// ─── Daily-games grader ─────────────────────────────────────────────────────
+
+/**
+ * GET  /api/admin/grader        → { config, parserTypes, legendKeys }
+ * PUT  /api/admin/grader        → body: { legend, boards }; full replace
+ * POST /api/admin/grader/test   → body: { content }; runs current config
+ *                                 against the content and returns the grade
+ *                                 (or null if nothing matches).
+ *
+ * Mod-or-officer gated — the user explicitly asked for mods to be able to
+ * manage boards + legend.
+ */
+export async function handleAdminGrader(request, env) {
+  await requireMod(request, env);
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/').filter(Boolean); // ['api','admin','grader', maybe 'test']
+  const action = parts[3] || null;
+
+  if (request.method === 'GET' && !action) {
+    const config = await loadGraderConfig(env);
+    return jsonResponse({
+      config,
+      defaults: DEFAULT_GRADER_CONFIG,
+      parserTypes: ['wordle', 'framed', 'connections'],
+      legendKeys: ['score1', 'score2', 'score3', 'score4', 'score5', 'score6', 'miss'],
+    });
+  }
+
+  if (request.method === 'PUT' && !action) {
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400); }
+    const result = validateGraderConfig(body);
+    if (!result.ok) return jsonResponse({ error: result.error }, 400);
+    await saveGraderConfig(env, result.config);
+    return jsonResponse({ ok: true, config: result.config });
+  }
+
+  if (request.method === 'POST' && action === 'test') {
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400); }
+    const content = typeof body?.content === 'string' ? body.content : '';
+    // If the caller sent a draft config along with the test, use it; otherwise
+    // run against the saved config. Lets the SPA preview edits before saving.
+    let config;
+    if (body?.config) {
+      const result = validateGraderConfig(body.config);
+      if (!result.ok) return jsonResponse({ error: result.error }, 400);
+      config = result.config;
+    } else {
+      config = await loadGraderConfig(env);
+    }
+    const grade = gradeMessage(content, config);
+    return jsonResponse({ grade });
+  }
+
+  return methodNotAllowed();
+}
+
+/**
+ * GET /api/admin/emojis → { emojis: [{id, name, animated, available, url}] }
+ *
+ * Read-only view of the guild's custom emojis as the bot sees them. Useful
+ * when editing the grader legend, since reaction strings for custom emoji
+ * are `name:id` and aren't otherwise obvious. Mod-or-officer gated.
+ */
+export async function handleAdminEmojis(request, env) {
+  await requireMod(request, env);
+  if (request.method !== 'GET') return methodNotAllowed();
+
+  const guildId = env.GUILD_ID;
+  if (!guildId) return jsonResponse({ error: 'GUILD_ID not configured' }, 500);
+
+  let emojis;
+  try {
+    emojis = await fetchGuildEmojis(env, guildId);
+  } catch (err) {
+    return jsonResponse({ error: err.message }, 502);
+  }
+
+  const out = emojis
+    .filter(e => e.id)
+    .map(e => ({
+      id: e.id,
+      name: e.name,
+      animated: !!e.animated,
+      available: e.available !== false,
+      reaction: `${e.name}:${e.id}`,
+      url: `https://cdn.discordapp.com/emojis/${e.id}.${e.animated ? 'gif' : 'png'}?size=48&quality=lossless`,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return jsonResponse({ emojis: out });
 }
 
 // ─── Shared CRUD helper ──────────────────────────────────────────────────────
@@ -322,7 +430,7 @@ async function handleCrudCollection(request, env, key) {
  *                                            officers channel.
  */
 export async function handleAdminStreamers(request, env) {
-  const session = await requireAuth(request, env);
+  const session = await requireOfficer(request, env);
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean); // ['api','admin','streamers', maybe id, maybe action]
   // url.pathname doesn't decode percent-escapes — synthetic IDs like

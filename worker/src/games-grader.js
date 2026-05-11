@@ -1,39 +1,69 @@
 /**
  * Auto-grader for boards posted in #daily-games.
  *
- * Each parser inspects the raw message content; if the message looks like a
- * board for that game it returns `{game, score, emoji, fail}`. The scheduled
- * poller adds the emoji as a reaction. Unknown / non-board messages return
- * `null` so the poller knows to skip.
+ * `gradeMessage(content, config)` walks the configured boards in order and
+ * returns the first hit's `{game, score, emoji, fail}`. The scheduler then
+ * reacts with `emoji`. The poller skips unknown / non-board messages by
+ * receiving `null`.
  *
- * Scoring legend (shared by Wordle + Framed; Connections uses 1-4 + miss):
- *   1 → 🌟   2 → ⭐   3 → 💫   4 → ✴️   5 → 🔸   6 → ▪️   miss → ❌
+ * Three built-in parser types match the layouts of the original boards:
+ *   - wordle      → header regex captures the score token (digit or "X")
+ *   - framed      → header regex gates; score = first 🟩 in a 6-square row
+ *   - connections → header regex gates; score = 1 + mistake rows (solid same-
+ *                   color rows count as solved groups)
+ *
+ * Legend (score → emoji) and the per-board header regex live in
+ * `CONFIG:grader_config` — editable from the Daily Games admin view. See
+ * `grader-config.js` for the schema + defaults.
  */
 
-const SCORE_EMOJI = ['🌟', '⭐', '💫', '✴️', '🔸', '▪️'];
-const FAIL_EMOJI = '❌';
+import { DEFAULT_GRADER_CONFIG } from './grader-config.js';
 
-export function gradeMessage(content) {
+export function gradeMessage(content, config = DEFAULT_GRADER_CONFIG) {
   if (!content) return null;
-  return parseWordle(content) || parseFramed(content) || parseConnections(content);
+  for (const board of config.boards || []) {
+    const result = runBoard(board, content, config.legend);
+    if (result) return result;
+  }
+  return null;
 }
 
-// ─── Wordle ─────────────────────────────────────────────────────────────────
+function runBoard(board, content, legend) {
+  let header;
+  try {
+    header = new RegExp(board.headerRegex, 'm');
+  } catch {
+    return null;
+  }
+  const match = header.exec(content);
+  if (!match) return null;
+
+  switch (board.parserType) {
+    case 'wordle':      return parseWordle(board, match, legend);
+    case 'framed':      return parseFramed(board, content, legend);
+    case 'connections': return parseConnections(board, content, legend);
+    default:            return null;
+  }
+}
+
+// ─── Wordle-style ───────────────────────────────────────────────────────────
 //
-// First line looks like `Wordle 1,234 4/6` (puzzle number can be `1,234`,
-// `1234`, or `4/6` directly). Optional trailing `*` denotes hard mode. `X/6`
-// means failed.
+// Header regex captures the score token. Default board: `Wordle 1,234 4/6` →
+// captures `4` (or `X` for miss). Token "X" / "x" → miss. A digit token is
+// looked up in the legend by `score{N}`.
 
-function parseWordle(content) {
-  const m = content.match(/^Wordle\s+\S+\s+([X1-6])\/6\*?/m);
-  if (!m) return null;
-  const token = m[1];
-  if (token === 'X') return { game: 'wordle', score: null, emoji: FAIL_EMOJI, fail: true };
+function parseWordle(board, match, legend) {
+  const token = match[1];
+  if (!token) return null;
+  if (token === 'X' || token === 'x') {
+    return { game: board.id, score: null, emoji: legend.miss, fail: true };
+  }
   const n = parseInt(token, 10);
-  return { game: 'wordle', score: n, emoji: SCORE_EMOJI[n - 1], fail: false };
+  if (!Number.isFinite(n) || n < 1 || n > 6) return null;
+  return { game: board.id, score: n, emoji: legend[`score${n}`], fail: false };
 }
 
-// ─── Framed ─────────────────────────────────────────────────────────────────
+// ─── Framed-style ───────────────────────────────────────────────────────────
 //
 // Format:
 //   Framed #1520
@@ -41,26 +71,24 @@ function parseWordle(content) {
 //
 // Score = 1-indexed position of the first 🟩 in the squares line. No 🟩 = miss.
 
-const SQUARE_CODEPOINTS = new Set([0x1F7E5, 0x1F7E9, 0x2B1B]); // 🟥 🟩 ⬛
+const FRAMED_SQUARES = new Set([0x1F7E5, 0x1F7E9, 0x2B1B]); // 🟥 🟩 ⬛
 
-function parseFramed(content) {
-  if (!/^Framed\s+#\d+/m.test(content)) return null;
-
+function parseFramed(board, content, legend) {
   for (const line of content.split('\n')) {
-    const squares = [...line].filter(ch => SQUARE_CODEPOINTS.has(ch.codePointAt(0)));
+    const squares = [...line].filter(ch => FRAMED_SQUARES.has(ch.codePointAt(0)));
     if (squares.length < 6) continue;
     const idx = squares.findIndex(ch => ch === '🟩');
     if (idx === -1) {
-      return { game: 'framed', score: null, emoji: FAIL_EMOJI, fail: true };
+      return { game: board.id, score: null, emoji: legend.miss, fail: true };
     }
-    const score = idx + 1; // 1-indexed
+    const score = idx + 1;
     if (score < 1 || score > 6) return null;
-    return { game: 'framed', score, emoji: SCORE_EMOJI[score - 1], fail: false };
+    return { game: board.id, score, emoji: legend[`score${score}`], fail: false };
   }
   return null;
 }
 
-// ─── Connections ────────────────────────────────────────────────────────────
+// ─── Connections-style ──────────────────────────────────────────────────────
 //
 // Format:
 //   Connections
@@ -73,12 +101,14 @@ function parseFramed(content) {
 // Each row of 4 squares is one guess. A row of all-same-color squares = a
 // correctly-identified group. Mixed rows = mistakes. The puzzle is solved if
 // all four group colors appear as solid rows. Score = 1 + mistakes (so 0
-// mistakes → 🌟, 3 mistakes → ✴️, failed → ❌).
+// mistakes → score1, 3 mistakes → score4, failed → miss).
 
 const CONN_COLORS = new Set([0x1F7E8, 0x1F7E9, 0x1F7E6, 0x1F7EA]); // 🟨 🟩 🟦 🟪
 
-function parseConnections(content) {
-  if (!/^Connections\b/im.test(content) || !/Puzzle\s+#\d+/i.test(content)) return null;
+function parseConnections(board, content, legend) {
+  // Require a "Puzzle #N" line in addition to the header gate so partial-text
+  // messages mentioning "Connections" don't match accidentally.
+  if (!/Puzzle\s+#\d+/i.test(content)) return null;
 
   const rows = [];
   for (const line of content.split('\n')) {
@@ -96,17 +126,9 @@ function parseConnections(content) {
   }
 
   const solved = solidColors.size === 4;
-  if (!solved) {
-    return { game: 'connections', score: null, emoji: FAIL_EMOJI, fail: true };
+  if (!solved || mistakes < 0 || mistakes > 3) {
+    return { game: board.id, score: null, emoji: legend.miss, fail: true };
   }
-  if (mistakes < 0 || mistakes > 3) {
-    // Should be impossible if solved (max 3 mistakes allowed), but be safe.
-    return { game: 'connections', score: null, emoji: FAIL_EMOJI, fail: true };
-  }
-  return {
-    game: 'connections',
-    score: mistakes + 1,
-    emoji: SCORE_EMOJI[mistakes], // 0 mistakes → 🌟 (index 0)
-    fail: false,
-  };
+  const score = mistakes + 1;
+  return { game: board.id, score, emoji: legend[`score${score}`], fail: false };
 }
