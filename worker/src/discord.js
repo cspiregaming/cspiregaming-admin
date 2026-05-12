@@ -33,6 +33,7 @@ export async function fetchGuildMembers(env, guildId, roleIds) {
   const filteredMembers = members
     .filter(m => m.roles.some(rid => roleSet.has(rid)))
     .map(m => ({
+      id: m.user.id,
       username: m.user.username,
       displayName: m.nick || m.user.global_name || m.user.username,
       avatar: resolveAvatar(m.user),

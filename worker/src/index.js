@@ -6,6 +6,7 @@ import {
   handleAdminConfig,
   handleAdminRoles,
   handleAdminMembers,
+  handleAdminMemberOptOuts,
   handleAdminOfficers,
   handleAdminEvents,
   handleAdminDiscordEvents,
@@ -90,6 +91,9 @@ async function route(request, env, ctx) {
   // Admin routes
   if (path === '/api/admin/config') return handleAdminConfig(request, env);
   if (path === '/api/admin/roles') return handleAdminRoles(request, env);
+  if (path === '/api/admin/members/opt-outs' || path.startsWith('/api/admin/members/opt-outs/')) {
+    return handleAdminMemberOptOuts(request, env);
+  }
   if (path === '/api/admin/members') return handleAdminMembers(request, env);
   if (path.startsWith('/api/admin/officers')) return handleAdminOfficers(request, env);
   if (path.startsWith('/api/admin/discord-events')) return handleAdminDiscordEvents(request, env);

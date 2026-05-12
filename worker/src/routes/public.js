@@ -1,5 +1,6 @@
 import { fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays } from '../discord-events.js';
+import { getOptedOutIds } from '../member-opt-outs.js';
 
 const MEMBERS_CACHE_TTL = 300; // 5 minutes
 
@@ -7,9 +8,10 @@ export async function handlePublicMembers(request, env) {
   const guildId = env.GUILD_ID;
 
   // Load configured role IDs and default selection from KV (set via admin UI)
-  const [roleIdsRaw, defaultRoleIdRaw] = await Promise.all([
+  const [roleIdsRaw, defaultRoleIdRaw, optedOut] = await Promise.all([
     env.CONFIG.get('role_ids'),
     env.CONFIG.get('default_role_id'),
+    getOptedOutIds(env),
   ]);
   const roleIds = roleIdsRaw ? JSON.parse(roleIdsRaw) : [];
   const defaultRoleId = defaultRoleIdRaw && roleIds.includes(defaultRoleIdRaw)
@@ -20,19 +22,37 @@ export async function handlePublicMembers(request, env) {
     return jsonResponse({ members: [], roles: [], totalMembers: 0, defaultRoleId, fetchedAt: new Date().toISOString() });
   }
 
-  // Check cache
+  // Check cache. Opt-outs are filtered at response time so toggling doesn't
+  // require a cache bust — the cached payload still contains every role-bearing
+  // member, and we mask the opted-out ones on the way out.
   const cacheKey = `members_${guildId}`;
-  const cached = await env.CACHE.get(cacheKey, 'json');
-  if (cached) return jsonResponse({ ...cached, defaultRoleId });
+  let payload = await env.CACHE.get(cacheKey, 'json');
+  if (!payload) {
+    payload = await fetchGuildMembers(env, guildId, roleIds);
+    await env.CACHE.put(cacheKey, JSON.stringify(payload), { expirationTtl: MEMBERS_CACHE_TTL });
+  }
 
-  // Fetch from Discord
-  const data = await fetchGuildMembers(env, guildId, roleIds);
+  return jsonResponse({
+    ...payload,
+    ...filterOptOuts(payload, optedOut),
+    defaultRoleId,
+  });
+}
 
-  // Store in KV with TTL (defaultRoleId is layered on at response time so
-  // changing it doesn't require invalidating the member roster cache)
-  await env.CACHE.put(cacheKey, JSON.stringify(data), { expirationTtl: MEMBERS_CACHE_TTL });
+function filterOptOuts(payload, optedOut) {
+  if (!optedOut.size) {
+    // Strip ids from the public response — they're load-bearing for opt-out
+    // filtering on the server but not needed by the public site.
+    return { members: (payload.members || []).map(stripId), totalMembers: payload.totalMembers };
+  }
+  const visible = (payload.members || [])
+    .filter(m => !optedOut.has(m.id))
+    .map(stripId);
+  return { members: visible, totalMembers: visible.length };
+}
 
-  return jsonResponse({ ...data, defaultRoleId });
+function stripId({ id, ...rest }) {
+  return rest;
 }
 
 export async function handlePublicContent(request, env) {

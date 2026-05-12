@@ -59,6 +59,11 @@ export const api = {
   // Members
   getMembers: () => apiFetch('/api/admin/members'),
   exportMembersCsv: () => apiFetch('/api/admin/members?format=csv'),
+  setMemberOptOut: (discordId, optedOut) =>
+    apiFetch(`/api/admin/members/opt-outs/${encodeURIComponent(discordId)}`, {
+      method: 'PUT',
+      body: JSON.stringify({ optedOut }),
+    }),
 
   // Officers
   getOfficers: () => apiFetch('/api/admin/officers'),

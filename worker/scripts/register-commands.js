@@ -53,6 +53,11 @@ const commands = [
     dm_permission: false,
   },
   {
+    name: 'toggle-public-membership',
+    description: 'Toggle whether your roles list you on the public C Spire Gaming homepage (opt-in by default)',
+    dm_permission: false,
+  },
+  {
     name: 'streamer-list',
     description: 'List all members registered with the bot for live announcements (mods+ only)',
     dm_permission: false,

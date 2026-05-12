@@ -24,6 +24,7 @@ import {
   postRemovalAuditLog,
 } from './streamers.js';
 import * as streamerRegistry from '../streamers.js';
+import * as memberOptOuts from '../member-opt-outs.js';
 import { buildBombPayload } from '../parrotbomb.js';
 
 export async function handleInteractions(request, env, ctx) {
@@ -113,6 +114,8 @@ async function handleCommand(interaction, env, ctx) {
       return commandStreamerList(interaction, env, ctx);
     case 'streamer-remove':
       return commandStreamerRemove(interaction, env, ctx);
+    case 'toggle-public-membership':
+      return commandTogglePublicMembership(interaction, env);
     default:
       return ephemeralReply('Unknown command.');
   }
@@ -375,6 +378,31 @@ async function commandStreamerRemove(interaction, env, ctx) {
     type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE,
     data: { flags: FLAGS.EPHEMERAL },
   });
+}
+
+// ─── /toggle-public-membership ───────────────────────────────────────────────
+
+async function commandTogglePublicMembership(interaction, env) {
+  const user = interaction.member?.user || interaction.user;
+  const userId = user?.id;
+  if (!userId) return ephemeralReply('Couldn\'t identify you. Try again.');
+
+  const { optedOut } = await memberOptOuts.toggle(env, userId, {
+    source: 'self',
+    actorId: userId,
+    actorName: interaction.member?.nick || user?.global_name || user?.username || userId,
+  });
+
+  const lines = [
+    'The public C Spire Gaming member list is **opt-in by role**: if any of your Discord roles are configured to show on the site, you appear there by default. This command lets you opt yourself out (or back in).',
+    '',
+    optedOut
+      ? '🚫 **You\'re now opted out.** Your card will disappear from https://cspiregaming.com within ~5 minutes (whenever the member cache refreshes).'
+      : '✅ **You\'re now opted back in** (the default). Your card will reappear on https://cspiregaming.com within ~5 minutes.',
+    '',
+    'Run `/toggle-public-membership` again any time to flip back.',
+  ];
+  return ephemeralReply(lines.join('\n'));
 }
 
 // ─── /parrotbomb ─────────────────────────────────────────────────────────────

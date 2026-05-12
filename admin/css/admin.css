@@ -272,6 +272,38 @@ h2 { font-size: 1.2rem; }
   border: 1px solid var(--border);
 }
 
+.member-card.is-opted-out {
+  border-style: dashed;
+  opacity: .85;
+}
+.member-card.is-opted-out img { filter: grayscale(.4); }
+
+.member-card__optout-badge {
+  display: inline-block;
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 980px;
+  background: rgba(224, 82, 82, 0.15);
+  border: 1px solid var(--red);
+  color: var(--red);
+}
+
+.member-card__optout-btn {
+  margin-top: 4px;
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+.btn-ghost {
+  background: transparent;
+  border: 1px dashed var(--border);
+  color: var(--text-muted);
+}
+.btn-ghost:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--blue);
+}
+
 /* ─── Forms & Tables ──────────────────────────────────────────── */
 
 .form-group { margin-bottom: 16px; }

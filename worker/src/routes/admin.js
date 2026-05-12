@@ -3,6 +3,7 @@ import { discordOAuthExchange, fetchGuildEmojis, fetchGuildMembers } from '../di
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 import * as eventPublishRequests from '../event-publish-requests.js';
 import * as streamerRegistry from '../streamers.js';
+import * as memberOptOuts from '../member-opt-outs.js';
 import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest, registerOfficialStreamer } from './streamers.js';
 import { loadGraderConfig, saveGraderConfig, validateGraderConfig, DEFAULT_GRADER_CONFIG } from '../grader-config.js';
 import { gradeMessage } from '../games-grader.js';
@@ -171,18 +172,23 @@ export async function handleAdminMembers(request, env) {
   const roleIdsRaw = await env.CONFIG.get('role_ids');
   const roleIds = roleIdsRaw ? JSON.parse(roleIdsRaw) : [];
 
-  const { members, roles, totalMembers, fetchedAt } = roleIds.length
-    ? await fetchGuildMembers(env, guildId, roleIds)
-    : { members: [], roles: [], totalMembers: 0, fetchedAt: new Date().toISOString() };
+  const [{ members, roles, totalMembers, fetchedAt }, optedOutMap] = await Promise.all([
+    roleIds.length
+      ? fetchGuildMembers(env, guildId, roleIds)
+      : Promise.resolve({ members: [], roles: [], totalMembers: 0, fetchedAt: new Date().toISOString() }),
+    memberOptOuts.getAll(env),
+  ]);
+
+  const enriched = members.map(m => ({ ...m, optedOut: !!optedOutMap[m.id] }));
 
   // CSV export
   if (url.searchParams.get('format') === 'csv') {
-    const lines = ['displayName,username,roles'];
-    members.forEach(m => {
+    const lines = ['displayName,username,roles,optedOut'];
+    enriched.forEach(m => {
       const roleNames = m.roles
         .map(id => roles.find(r => r.id === id)?.name || id)
         .join('; ');
-      lines.push(`"${m.displayName}","${m.username}","${roleNames}"`);
+      lines.push(`"${m.displayName}","${m.username}","${roleNames}","${m.optedOut ? 'yes' : ''}"`);
     });
     return new Response(lines.join('\n'), {
       headers: {
@@ -192,7 +198,49 @@ export async function handleAdminMembers(request, env) {
     });
   }
 
-  return jsonResponse({ members, roles, totalMembers, fetchedAt });
+  return jsonResponse({ members: enriched, roles, totalMembers, fetchedAt });
+}
+
+/**
+ * Opt-outs from the public Members section.
+ *   GET /api/admin/members/opt-outs                → { optOuts: { id: {...} } }
+ *   PUT /api/admin/members/opt-outs/{discordId}    body { optedOut: bool }
+ *
+ * The public site lists every member with a configured role by default; this
+ * map carves out individuals who've asked to be hidden (officer-toggled here
+ * or self-toggled via /toggle-public-membership). Officer-gated.
+ */
+export async function handleAdminMemberOptOuts(request, env) {
+  const session = await requireOfficer(request, env);
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/').filter(Boolean);
+  // /api/admin/members/opt-outs              → no targetId
+  // /api/admin/members/opt-outs/{discordId}  → parts[4]
+  const targetId = parts[4] ? safeDecode(parts[4]) : null;
+
+  if (request.method === 'GET' && !targetId) {
+    return jsonResponse({ optOuts: await memberOptOuts.getAll(env) });
+  }
+
+  if (request.method === 'PUT' && targetId) {
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400); }
+    if (typeof body?.optedOut !== 'boolean') {
+      return jsonResponse({ error: 'Body must be { optedOut: boolean }' }, 400);
+    }
+    if (body.optedOut) {
+      const record = await memberOptOuts.setOptedOut(env, targetId, {
+        source: 'officer',
+        actorId: session.sub,
+        actorName: session.displayName || session.username || session.sub,
+      });
+      return jsonResponse({ ok: true, optedOut: true, record });
+    }
+    await memberOptOuts.clearOptedOut(env, targetId);
+    return jsonResponse({ ok: true, optedOut: false });
+  }
+
+  return methodNotAllowed();
 }
 
 export async function handleAdminOfficers(request, env) {

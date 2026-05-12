@@ -59,7 +59,7 @@ The role gate is set in `wrangler.toml` (developer access required to change). I
 ### What each section does
 
 - **Dashboard** — at-a-glance counts, "Refresh Member Cache" button (forces a re-fetch from Discord), and CSV export.
-- **Members** — live roster pulled from Discord via the bot. Filter by role, export to CSV.
+- **Members** — live roster pulled from Discord via the bot. Filter by role, export to CSV. Each card has a **Hide from public** / **Show on public site** toggle that opts the member out of (or back into) the public Members section on https://cspiregaming.com — the public list is opt-in by role, so this is a per-user override. Members can also self-toggle via `/toggle-public-membership` in Discord. The "🚫 Hidden from public" filter chip narrows the grid to opted-out members. Changes take effect within ~5 min (or hit "Refresh Member Cache" on the dashboard to apply immediately).
 - **Roles Config** — toggle which Discord roles appear publicly on the homepage, and pick which one (or "All Members") is selected by default when a visitor lands on the Members section. The full guild role list comes from Discord; check the ones you want shown. Saves go live within 5 minutes (or hit "Refresh Member Cache" on the dashboard to apply immediately).
 - **Officers** — manually-curated officer cards (name, photo URL, bio HTML, display order). Used by the public site's "Officers" section.
 - **Events** — split into two sections:
@@ -112,6 +112,15 @@ A Cloudflare Cron Trigger fires every minute, polls the channel for messages new
 
 The poller runs entirely on the worker's REST API, not a gateway connection, so the privileged Message Content Intent is **not** required — `GET /channels/{id}/messages` returns full content with just the bot's normal channel-read permissions.
 
+### Public-listing opt-out
+
+The public Members section on https://cspiregaming.com is **opt-in by role** — every member with one of the roles in Roles Config appears by default. Two paths can flip an individual member off the list:
+
+- **`/toggle-public-membership`** *(any member)* — ephemerally toggles the runner's own opt-out state and explains the opt-in model. Running it again flips back.
+- **Members admin section** *(officers)* — each member card has a **Hide from public** / **Show on public site** button. Hiding records the officer as the actor for audit. Use the "🚫 Hidden from public" filter chip to review who's currently opted out.
+
+Opt-outs are stored in `CONTENT:public_member_opt_outs` and filtered at response time on `/api/public/members`, so toggles take effect on the next public request without requiring a cache bust.
+
 ### Streamer registration
 
 Members can self-register as streamers from Discord:
@@ -135,7 +144,7 @@ Members can self-register as streamers from Discord:
 
 ### Common operational tasks
 
-- **A new member isn't showing up on the public site.** Their role probably isn't in Roles Config, or the 5-min cache hasn't expired yet. Hit "Refresh Member Cache" on the dashboard.
+- **A new member isn't showing up on the public site.** Their role probably isn't in Roles Config, the 5-min cache hasn't expired yet, or they've opted themselves out via `/toggle-public-membership`. Hit "Refresh Member Cache" on the dashboard; check the "🚫 Hidden from public" filter in Members to confirm they aren't opted out.
 - **Member's avatar / display name is wrong.** Members get their avatar and display name from Discord. After they update it there, refresh the cache.
 - **A member appears under the wrong role.** Roles in Discord override anything here — fix it in Discord and refresh the cache.
 - **Member count on the dashboard looks wrong.** The dashboard counts only members with at least one *configured* role. Check Roles Config.
@@ -190,6 +199,7 @@ The admin SPA points at `<meta name="worker-base">` in `admin/index.html`. For l
 | `CONTENT` | `discord_event_overlays` | JSON object keyed by Discord scheduled-event ID. Each entry: `{published, actionButtonText?, actionButtonUrl?}`. Only events with `published === true` show on the public site. Empty entries are deleted. |
 | `CONTENT` | `past_discord_events` | JSON object keyed by Discord event ID, snapshotted when an event completes or disappears from Discord. Each entry is the normalized event shape plus `archivedAt`. Pruned to entries newer than 30 days every time the live cache misses. |
 | `CONTENT` | `event_publish_requests` | JSON object keyed by Discord interaction ID. Each entry: `{id, eventId, requestedBy, requestedAt, status: 'pending'\|'approved'\|'denied', channelId, channelMessageId, decidedBy?, decidedAt?, downgradeReason?}`. Pruned 30 days after `decidedAt`. |
+| `CONTENT` | `public_member_opt_outs` | JSON object keyed by Discord user ID → `{discordId, optedOutAt, source: 'self'\|'officer', actorId?, actorName?}`. Carves out individual members who shouldn't appear on the public Members section even though they hold a configured role. Written by `/toggle-public-membership` (self) and `/api/admin/members/opt-outs/{id}` (officer). Filtered at response time in `/api/public/members`. |
 | `CONTENT` | `streamers` | JSON object keyed by Discord user ID. Each entry: `{discordId, discordUsername, displayName, registeredAt, updatedAt, isOfficial?, twitch?: {userId, login, displayName, eventSubIds: {online, offline}}, youtube?: {channelId, name}}`. Written by the `/register-stream` OAuth callback; deleted by `/unregister-stream`. Official channels (the C Spire Gaming Twitch account) use `discordId = "official:<twitchUserId>"` and have `isOfficial: true`. |
 | `CONTENT` | `streamers_by_twitch` | JSON object keyed by Twitch user ID → Discord user ID. Reverse index used by the EventSub webhook to resolve incoming `stream.online` notifications back to a streamer record. |
 | `CONTENT` | `daily_games_last_seen` | Last Discord message ID processed by the games-grader cron in `DAILY_GAMES_CHANNEL_ID`. Acts as a high-water mark so each tick only inspects messages newer than the previous run. Initialized to the most-recent message on first run (no historical backfill). |
@@ -207,7 +217,7 @@ The OAuth callback admits members with **either** `ADMIN_ROLE_ID` (officer) or a
 
 | Method | Path | Notes |
 | --- | --- | --- |
-| POST | `/api/interactions` | Discord interactions endpoint. Verifies Ed25519 signatures via `DISCORD_PUBLIC_KEY`. Handles PING, slash commands (`/request-event-publish`, `/register-stream`, `/unregister-stream`, `/streamer-list`, `/streamer-remove`, `/parrotbomb`), button clicks (Approve/Deny on the officers-channel post), and autocomplete. Discord-only — not called by the SPA or public site. |
+| POST | `/api/interactions` | Discord interactions endpoint. Verifies Ed25519 signatures via `DISCORD_PUBLIC_KEY`. Handles PING, slash commands (`/request-event-publish`, `/register-stream`, `/unregister-stream`, `/streamer-list`, `/streamer-remove`, `/parrotbomb`, `/toggle-public-membership`), button clicks (Approve/Deny on the officers-channel post), and autocomplete. Discord-only — not called by the SPA or public site. |
 | GET | `/api/auth/stream-callback` | OAuth callback for `/register-stream`. Verifies the JWT state token, exchanges the code for a Discord access token, reads `/users/@me/connections`, then asynchronously creates Twitch EventSub subscriptions, assigns the `@streamer` role, and follows up to the original interaction. Returns a static success page. |
 | POST | `/api/twitch/eventsub` | Twitch EventSub webhook. Verifies HMAC-SHA256 signatures with `TWITCH_EVENTSUB_SECRET`. Handles the one-time `webhook_callback_verification` challenge plus `notification` (posts the live embed for `stream.online`) and `revocation` (logs only). |
 | GET | `/api/public/members` | Returns members with at least one configured role + role metadata + `defaultRoleId` (the role ID the public site should pre-select, or `null` for "All Members"). Cached 5 min. |
@@ -217,10 +227,12 @@ The OAuth callback admits members with **either** `ADMIN_ROLE_ID` (officer) or a
 | POST | `/api/auth/logout` | Clears the `admin_token` cookie. |
 | GET, PUT | `/api/admin/config` | GET returns `{guild_id, role_ids, default_role_id, bot_token_set, jwt_secret_set}` for the dashboard/settings views. PUT accepts `{role_ids, default_role_id}` (both optional, used by Roles Config); `default_role_id` is cleared when set to `null`, `"all"`, or a role ID not present in the saved `role_ids`. Also invalidates the member cache. |
 | GET | `/api/admin/roles` | All roles in the guild via the bot, minus `@everyone`. Used by Roles Config. *Officer.* |
+| GET | `/api/admin/members/opt-outs` | Returns `{optOuts: {<discordId>: {...}}}` — every member currently opted out of the public list. *Officer.* |
+| PUT | `/api/admin/members/opt-outs/{discordId}` | Body `{optedOut: bool}`. Opt the given Discord user out of (or back into) the public Members section. Records `source: 'officer'` plus `actorId`/`actorName` for audit. *Officer.* |
 | GET, PUT | `/api/admin/grader` | GET returns `{config, defaults, parserTypes, legendKeys}`. PUT replaces `CONFIG:grader_config` after schema validation. *Mod or officer.* |
 | POST | `/api/admin/grader/test` | Body: `{content, config?}`. Runs the grader against `content` using the supplied draft `config` (if any) or the saved one. Returns `{grade}` where `grade` is `null` or `{game, score, emoji, fail}`. *Mod or officer.* |
 | GET | `/api/admin/emojis` | Returns the guild's custom-emoji catalog as `{id, name, animated, available, reaction, url}`. Used by the Daily Games view's emoji picker. *Mod or officer.* |
-| GET | `/api/admin/members` | Same as public, but bypasses cache. `?format=csv` exports CSV. |
+| GET | `/api/admin/members` | Same as public, but bypasses cache and includes each member's Discord `id` plus `optedOut: bool` (whether they're hidden from the public list). `?format=csv` exports CSV (adds an `optedOut` column). |
 | GET, POST | `/api/admin/officers` | List or create. POST returns the new item with a generated `id`. |
 | GET, PUT, DELETE | `/api/admin/officers/{id}` | Read, update, or delete one officer. |
 | GET, POST | `/api/admin/events` | Manually-curated events. Same shape as officers. |
