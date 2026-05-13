@@ -216,7 +216,12 @@ export async function renderCheckins(container) {
 
       <div class="card__header" style="margin-top:32px">
         <h1 style="font-size:1.25rem">Recent check-ins</h1>
-        <select id="checkins-filter" style="min-width:240px"></select>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="checkins-filter" style="min-width:240px"></select>
+          <button class="btn btn-outline" id="btn-refresh-checkins" ${checkinsLoading ? 'disabled' : ''}>
+            ${checkinsLoading ? '⟳ Refreshing…' : '⟳ Refresh'}
+          </button>
+        </div>
       </div>
       <div class="card">
         ${checkinsTable()}
@@ -257,6 +262,10 @@ export async function renderCheckins(container) {
     // Filter dropdown for the recent-checkins table
     document.getElementById('checkins-filter').addEventListener('change', e => {
       filterEventId = e.target.value;
+      reloadCheckins();
+    });
+
+    document.getElementById('btn-refresh-checkins')?.addEventListener('click', () => {
       reloadCheckins();
     });
 
