@@ -9,6 +9,7 @@ import { renderSettings } from './views/settings.js';
 import { renderStreamers } from './views/streamers.js';
 import { renderGrader } from './views/grader.js';
 import { renderEmojis } from './views/emojis.js';
+import { renderCheckins } from './views/checkins.js';
 
 // ─── State ──────────────────────────────────────────────────────
 let currentSection = 'dashboard';
@@ -85,6 +86,7 @@ const NAV_ITEMS = [
   { section: 'roles',      icon: '🏷️', label: 'Roles Config',   tiers: ['officer'] },
   { section: 'officers',   icon: '⭐', label: 'Officers',       tiers: ['officer'] },
   { section: 'events',     icon: '📅', label: 'Events',         tiers: ['officer'] },
+  { section: 'checkins',   icon: '📝', label: 'Check-Ins',      tiers: ['officer'] },
   { section: 'streamers',  icon: '🎮', label: 'Streamers',      tiers: ['officer'] },
   { section: 'grader',     icon: '🎯', label: 'Daily Games',    tiers: ['officer', 'mod'] },
   { section: 'emojis',     icon: '😀', label: 'Custom Emojis',  tiers: ['officer', 'mod'] },
@@ -151,6 +153,7 @@ export function navigateTo(section) {
     roles: renderRolesConfig,
     officers: renderOfficers,
     events: renderEvents,
+    checkins: renderCheckins,
     streamers: renderStreamers,
     grader: renderGrader,
     emojis: renderEmojis,

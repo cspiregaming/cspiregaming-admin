@@ -115,4 +115,25 @@ export const api = {
 
   // Bot guild emoji catalog (read-only)
   getEmojis: () => apiFetch('/api/admin/emojis'),
+
+  // Event check-ins
+  getActiveEvent: () => apiFetch('/api/admin/checkins/active-event'),
+  setActiveEvent: data =>
+    apiFetch('/api/admin/checkins/active-event', { method: 'PUT', body: JSON.stringify(data) }),
+  clearActiveEvent: () =>
+    apiFetch('/api/admin/checkins/active-event', { method: 'DELETE' }),
+  getCheckinEventCandidates: () => apiFetch('/api/admin/checkins/event-candidates'),
+  getCheckins: (params = {}) => {
+    const qs = new URLSearchParams(
+      Object.entries(params).filter(([, v]) => v != null && v !== ''),
+    ).toString();
+    return apiFetch(`/api/admin/checkins${qs ? `?${qs}` : ''}`);
+  },
+  exportCheckinsCsv: (params = {}) => {
+    const qs = new URLSearchParams({
+      ...Object.fromEntries(Object.entries(params).filter(([, v]) => v != null && v !== '')),
+      format: 'csv',
+    }).toString();
+    return apiFetch(`/api/admin/checkins?${qs}`);
+  },
 };

@@ -78,6 +78,11 @@ binding = "CACHE"
 id = "d50b51116fca44c18c470fd59d3ab1c4"
 preview_id = "REPLACE_WITH_KV_PREVIEW_ID_3"
 
+[[kv_namespaces]]
+binding = "CHECKINS"
+id = "ad01aa942c0d483396c491182b5726df"
+preview_id = "REPLACE_WITH_KV_PREVIEW_ID_4"
+
 # Secrets (set via `wrangler secret put <KEY>`, never committed):
 #   BOT_TOKEN          - Discord bot token (GuildMembers intent required)
 #   JWT_SECRET         - Random string for signing admin session JWTs and

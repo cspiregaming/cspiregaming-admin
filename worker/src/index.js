@@ -20,6 +20,12 @@ import {
   handleStreamAuthCallback,
   handleTwitchEventSub,
 } from './routes/streamers.js';
+import {
+  handleAdminActiveEvent,
+  handleAdminCheckins,
+  handleAdminEventCandidates,
+  handlePublicCheckIn,
+} from './routes/checkins.js';
 import { runDailyGamesGrader } from './games-grader-scheduler.js';
 
 const ALLOWED_ORIGINS = [
@@ -75,6 +81,7 @@ async function route(request, env, ctx) {
   // Public routes
   if (path === '/api/public/members') return handlePublicMembers(request, env);
   if (path === '/api/public/content') return handlePublicContent(request, env);
+  if (path === '/api/checkin') return handlePublicCheckIn(request, env);
 
   // Discord interactions (signature-verified)
   if (path === '/api/interactions') return handleInteractions(request, env, ctx);
@@ -102,6 +109,9 @@ async function route(request, env, ctx) {
   if (path.startsWith('/api/admin/streamers')) return handleAdminStreamers(request, env);
   if (path.startsWith('/api/admin/grader')) return handleAdminGrader(request, env);
   if (path === '/api/admin/emojis') return handleAdminEmojis(request, env);
+  if (path === '/api/admin/checkins/active-event') return handleAdminActiveEvent(request, env);
+  if (path === '/api/admin/checkins/event-candidates') return handleAdminEventCandidates(request, env);
+  if (path === '/api/admin/checkins') return handleAdminCheckins(request, env);
 
   return new Response(JSON.stringify({ error: 'Not found' }), {
     status: 404,
