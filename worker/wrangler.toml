@@ -3,9 +3,11 @@ main = "src/index.js"
 compatibility_date = "2024-09-23"
 compatibility_flags = ["nodejs_compat"]
 
-# Cron triggers. Currently:
-#   - games-grader: polls #daily-games every minute, grades new boards
-#     (Wordle / Framed / Connections) and reacts with the score emoji.
+# Cron triggers. The single minute cron drives multiple jobs:
+#   - games-grader: polls #daily-games, grades new boards (Wordle / Framed /
+#     Connections) and reacts with the score emoji.
+#   - statbot-daily: fires the daily Statbot stats report once it crosses
+#     18:00 Central each day (idempotent via a KV last-run-date guard).
 [triggers]
 crons = ["*/1 * * * *"]
 
@@ -54,6 +56,9 @@ DAILY_GAMES_CHANNEL_ID = "937590181672935454"
 # "Test Embed" preview button so officers can see what a live announcement
 # looks like without firing it in #live-announcements.
 BOT_LOGS_CHANNEL_ID = "379709425126211586"
+# Public-facing bot-commands channel. Daily Statbot report cross-posts here
+# alongside BOT_LOGS_CHANNEL_ID so members (not just mods) see the stats.
+BOT_COMMANDS_CHANNEL_ID = "379714158016462850"
 # Optional override for the worker's public origin. Used to build the OAuth
 # redirect URI for /register-stream and the Twitch EventSub callback URL.
 # Defaults to https://api.cspiregaming.com.
@@ -100,3 +105,6 @@ preview_id = "REPLACE_WITH_KV_PREVIEW_ID_4"
 #                              when creating EventSub subscriptions; the
 #                              webhook handler verifies notification signatures
 #                              with it.
+#   STATBOT_API_KEY          - Statbot Premium API key, generated from the guild
+#                              dashboard (Server Settings → Developers → API Key).
+#                              Used by the 6 PM Central daily stats cron.

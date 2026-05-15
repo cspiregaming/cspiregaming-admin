@@ -19,7 +19,10 @@ export async function renderRolesConfig(container) {
   }
 
   const enabledRoleIds = new Set(config.role_ids || []);
-  let defaultRoleId = config.default_role_id || 'all';
+  let randomSelection = config.default_role_id === 'random';
+  let defaultRoleId = (config.default_role_id && config.default_role_id !== 'random')
+    ? config.default_role_id
+    : 'all';
   let filter = '';
 
   function render() {
@@ -49,9 +52,20 @@ export async function renderRolesConfig(container) {
       </p>
 
       <div class="card" style="margin-bottom:16px">
+        <div style="margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border)">
+          <label class="toggle">
+            <input type="checkbox" id="random-selection" ${randomSelection ? 'checked' : ''}>
+            <span class="toggle__track"></span>
+            <span style="font-weight:600">Random Selection on Page Load</span>
+          </label>
+          <p style="color:var(--text-muted);font-size:13px;margin:8px 0 0 46px">
+            Picks a random enabled role as the active filter chip each time the page loads.
+          </p>
+        </div>
+
         <div class="form-group" style="margin-bottom:0">
           <label for="default-role">Default selection on the public site</label>
-          <select id="default-role">
+          <select id="default-role" ${randomSelection ? 'disabled' : ''}>
             <option value="all" ${defaultRoleId === 'all' ? 'selected' : ''}>All Members</option>
             ${defaultOptions}
           </select>
@@ -76,6 +90,12 @@ export async function renderRolesConfig(container) {
 
     document.getElementById('default-role')?.addEventListener('change', e => {
       defaultRoleId = e.target.value;
+    });
+
+    document.getElementById('random-selection')?.addEventListener('change', e => {
+      randomSelection = e.target.checked;
+      const select = document.getElementById('default-role');
+      if (select) select.disabled = randomSelection;
     });
 
     document.getElementById('role-filter')?.addEventListener('input', e => {
@@ -103,7 +123,9 @@ export async function renderRolesConfig(container) {
       try {
         await api.putConfig({
           role_ids: [...enabledRoleIds],
-          default_role_id: defaultRoleId === 'all' ? null : defaultRoleId,
+          default_role_id: randomSelection
+            ? 'random'
+            : (defaultRoleId === 'all' ? null : defaultRoleId),
         });
         document.getElementById('save-feedback').innerHTML =
           '<div class="alert alert-success">✓ Roles saved. The Members section will update within 5 minutes.</div>';

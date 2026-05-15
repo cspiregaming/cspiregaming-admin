@@ -325,6 +325,11 @@ input:focus, textarea:focus, select:focus {
   border-color: var(--blue);
 }
 
+input:disabled, textarea:disabled, select:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
 textarea { min-height: 80px; resize: vertical; }
 
 .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
@@ -503,6 +508,41 @@ tbody tr:hover td { background: var(--surface-raised); }
   white-space: nowrap;
   color: var(--text-muted);
 }
+
+/* ─── Statbot view ────────────────────────────────────────────── */
+
+.kv-table { width: 100%; border-collapse: collapse; }
+.kv-table th, .kv-table td { padding: 8px 12px; text-align: left; vertical-align: middle; border-bottom: 1px solid var(--border); }
+.kv-table tr:last-child th, .kv-table tr:last-child td { border-bottom: none; }
+.kv-table th { color: var(--text-muted); font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; width: 180px; }
+
+.statbot-json {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  font-size: 12px;
+  font-family: ui-monospace, monospace;
+  max-height: 600px;
+  overflow: auto;
+  margin: 0;
+}
+
+.statbot-embed {
+  background: var(--surface-raised);
+  border-radius: var(--radius);
+  border-left: 4px solid var(--blue);
+  padding: 14px 16px;
+  max-width: 560px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+.statbot-embed__title { font-weight: 600; font-size: 15px; margin-bottom: 10px; }
+.statbot-embed__field { margin-bottom: 10px; }
+.statbot-embed__field:last-child { margin-bottom: 0; }
+.statbot-embed__field-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+.statbot-embed__field-value { white-space: pre-wrap; color: var(--text); }
+.statbot-embed__footer { color: var(--text-muted); font-size: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 
 /* ─── Responsive ──────────────────────────────────────────────── */
 @media (max-width: 768px) {

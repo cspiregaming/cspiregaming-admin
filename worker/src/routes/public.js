@@ -14,9 +14,16 @@ export async function handlePublicMembers(request, env) {
     getOptedOutIds(env),
   ]);
   const roleIds = roleIdsRaw ? JSON.parse(roleIdsRaw) : [];
-  const defaultRoleId = defaultRoleIdRaw && roleIds.includes(defaultRoleIdRaw)
-    ? defaultRoleIdRaw
-    : null;
+  let defaultRoleId;
+  if (defaultRoleIdRaw === 'random' && roleIds.length) {
+    // Pick a different enabled role on each request so the public Members
+    // section opens to a varied chip on page load.
+    defaultRoleId = roleIds[Math.floor(Math.random() * roleIds.length)];
+  } else if (defaultRoleIdRaw && roleIds.includes(defaultRoleIdRaw)) {
+    defaultRoleId = defaultRoleIdRaw;
+  } else {
+    defaultRoleId = null;
+  }
 
   if (!roleIds.length) {
     return jsonResponse({ members: [], roles: [], totalMembers: 0, defaultRoleId, fetchedAt: new Date().toISOString() });

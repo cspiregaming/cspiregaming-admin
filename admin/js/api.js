@@ -116,6 +116,11 @@ export const api = {
   // Bot guild emoji catalog (read-only)
   getEmojis: () => apiFetch('/api/admin/emojis'),
 
+  // Statbot daily report
+  getStatbotStatus: () => apiFetch('/api/admin/statbot/status'),
+  previewStatbot: () => apiFetch('/api/admin/statbot/preview'),
+  runStatbot: () => apiFetch('/api/admin/statbot/run', { method: 'POST' }),
+
   // Event check-ins
   getActiveEvent: () => apiFetch('/api/admin/checkins/active-event'),
   setActiveEvent: data =>

@@ -10,6 +10,7 @@ import { renderStreamers } from './views/streamers.js';
 import { renderGrader } from './views/grader.js';
 import { renderEmojis } from './views/emojis.js';
 import { renderCheckins } from './views/checkins.js';
+import { renderStatbot } from './views/statbot.js';
 
 // ─── State ──────────────────────────────────────────────────────
 let currentSection = 'dashboard';
@@ -90,6 +91,7 @@ const NAV_ITEMS = [
   { section: 'streamers',  icon: '🎮', label: 'Streamers',      tiers: ['officer'] },
   { section: 'grader',     icon: '🎯', label: 'Daily Games',    tiers: ['officer', 'mod'] },
   { section: 'emojis',     icon: '😀', label: 'Custom Emojis',  tiers: ['officer', 'mod'] },
+  { section: 'statbot',    icon: '📈', label: 'Statbot',        tiers: ['officer'] },
   { section: 'social',     icon: '🔗', label: 'Social Links',   tiers: ['officer'] },
   { section: 'settings',   icon: '⚙️', label: 'Settings',       tiers: ['officer', 'mod'] },
 ];
@@ -157,6 +159,7 @@ export function navigateTo(section) {
     streamers: renderStreamers,
     grader: renderGrader,
     emojis: renderEmojis,
+    statbot: renderStatbot,
     social: renderSocial,
     settings: renderSettings,
   };

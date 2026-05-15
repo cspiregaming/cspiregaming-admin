@@ -7,6 +7,7 @@ import * as memberOptOuts from '../member-opt-outs.js';
 import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest, registerOfficialStreamer } from './streamers.js';
 import { loadGraderConfig, saveGraderConfig, validateGraderConfig, DEFAULT_GRADER_CONFIG } from '../grader-config.js';
 import { gradeMessage } from '../games-grader.js';
+import { runDailyStatbotReport, buildDailyReport } from '../statbot-daily.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -112,16 +113,21 @@ export async function handleAdminConfig(request, env) {
     }
 
     if ('default_role_id' in body) {
-      // Normalize: enabled role IDs win; "all" / null / unknown role → cleared.
-      const roleIdsRaw = body.role_ids != null
-        ? body.role_ids
-        : JSON.parse((await env.CONFIG.get('role_ids')) || '[]');
-      const enabled = new Set(roleIdsRaw);
+      // Normalize: enabled role IDs or the "random" sentinel win;
+      // "all" / null / unknown role → cleared.
       const next = body.default_role_id;
-      if (next && next !== 'all' && enabled.has(next)) {
-        await env.CONFIG.put('default_role_id', next);
+      if (next === 'random') {
+        await env.CONFIG.put('default_role_id', 'random');
       } else {
-        await env.CONFIG.delete('default_role_id');
+        const roleIdsRaw = body.role_ids != null
+          ? body.role_ids
+          : JSON.parse((await env.CONFIG.get('role_ids')) || '[]');
+        const enabled = new Set(roleIdsRaw);
+        if (next && next !== 'all' && enabled.has(next)) {
+          await env.CONFIG.put('default_role_id', next);
+        } else {
+          await env.CONFIG.delete('default_role_id');
+        }
       }
       cacheDirty = true;
     }
@@ -538,6 +544,110 @@ export async function handleAdminStreamers(request, env) {
   }
 
   return methodNotAllowed();
+}
+
+/**
+ * GET  /api/admin/statbot/status  → status panel data (API key set? last/next
+ *   run? target channels?). Cheap; does NOT hit the Statbot API.
+ * GET  /api/admin/statbot/preview → fetches the three Statbot datasets for the
+ *   current windows and returns raw JSON without posting. Useful for inspecting
+ *   the live response shapes before tuning the embed, and to drive the SPA's
+ *   in-page embed preview.
+ * POST /api/admin/statbot/run     → fires the daily report immediately (ignores
+ *   the 18:00-Central gate and the last-run guard) and posts to both channels.
+ *   The KV last-run-date is NOT updated, so the scheduled run still happens
+ *   today at 18:00 Central if you preview-test in the morning.
+ */
+export async function handleAdminStatbot(request, env) {
+  await requireOfficer(request, env);
+  const url = new URL(request.url);
+  const action = url.pathname.split('/').filter(Boolean)[3] || null;
+
+  if (request.method === 'GET' && action === 'status') {
+    const lastRunDate = await env.CONFIG.get('statbot_last_run_date');
+    return jsonResponse({
+      apiKeyConfigured: !!env.STATBOT_API_KEY,
+      lastRunDate: lastRunDate || null,
+      nextRunLabel: nextRunLabelCentral(lastRunDate),
+      centralNow: formatCentralNow(),
+      logsChannelId: env.BOT_LOGS_CHANNEL_ID || null,
+      commandsChannelId: env.BOT_COMMANDS_CHANNEL_ID || null,
+    });
+  }
+
+  if (!env.STATBOT_API_KEY) {
+    return jsonResponse({ error: 'STATBOT_API_KEY not configured (set via `wrangler secret put STATBOT_API_KEY`)' }, 500);
+  }
+
+  if (request.method === 'GET' && action === 'preview') {
+    const { embed, raw } = await buildDailyReport(env);
+    return jsonResponse({ embed, ...raw });
+  }
+
+  if (request.method === 'POST' && action === 'run') {
+    const result = await runDailyStatbotReport(env);
+    return jsonResponse(result);
+  }
+
+  return methodNotAllowed();
+}
+
+// ─── Central-time helpers (status endpoint) ────────────────────────────────
+//
+// Kept local to admin.js — the daily scheduler has its own copies. Duplication
+// is cheap; sharing across worker modules would require a new utility file
+// without much payoff.
+
+function centralPartsCentral(date = new Date()) {
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  });
+  const parts = fmt.formatToParts(date).reduce((acc, p) => {
+    if (p.type !== 'literal') acc[p.type] = p.value;
+    return acc;
+  }, {});
+  return parts;
+}
+
+function addCentralDay(yyyymmdd, days) {
+  const [y, m, d] = yyyymmdd.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  dt.setUTCDate(dt.getUTCDate() + days);
+  const y2 = dt.getUTCFullYear();
+  const m2 = String(dt.getUTCMonth() + 1).padStart(2, '0');
+  const d2 = String(dt.getUTCDate()).padStart(2, '0');
+  return `${y2}-${m2}-${d2}`;
+}
+
+function formatCentralLong(yyyymmdd) {
+  const [y, m, d] = yyyymmdd.split('-').map(Number);
+  const months = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December'];
+  return `${months[m - 1]} ${d}, ${y}`;
+}
+
+function nextRunLabelCentral(lastRunDate) {
+  const p = centralPartsCentral();
+  const today = `${p.year}-${p.month}-${p.day}`;
+  const hour = parseInt(p.hour, 10);
+  if (lastRunDate === today) {
+    return `Tomorrow (${formatCentralLong(addCentralDay(today, 1))}) at 6:00 PM Central`;
+  }
+  if (hour < 18) {
+    return `Today (${formatCentralLong(today)}) at 6:00 PM Central`;
+  }
+  return `Pending — will fire on the next cron tick (within 1 minute)`;
+}
+
+function formatCentralNow() {
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Chicago',
+    year: 'numeric', month: 'long', day: 'numeric',
+    hour: 'numeric', minute: '2-digit', timeZoneName: 'short',
+  });
+  return fmt.format(new Date());
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────

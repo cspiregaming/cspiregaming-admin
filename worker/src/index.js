@@ -14,6 +14,7 @@ import {
   handleAdminStreamers,
   handleAdminGrader,
   handleAdminEmojis,
+  handleAdminStatbot,
 } from './routes/admin.js';
 import { handleInteractions } from './routes/interactions.js';
 import {
@@ -27,6 +28,7 @@ import {
   handlePublicCheckIn,
 } from './routes/checkins.js';
 import { runDailyGamesGrader } from './games-grader-scheduler.js';
+import { maybeRunDailyStatbotReport } from './statbot-daily.js';
 
 const ALLOWED_ORIGINS = [
   'https://cspiregaming.github.io',
@@ -38,9 +40,11 @@ const ALLOWED_ORIGINS = [
 
 export default {
   async scheduled(event, env, ctx) {
-    // Currently a single cron — `*/1 * * * *` — drives the #daily-games
-    // grader. Add a switch on event.cron when more crons are added.
+    // Single minute cron `*/1 * * * *` drives several jobs. Each tick polls
+    // both — the Statbot daily report self-gates on Central time + a KV
+    // last-run guard so it fires exactly once per day.
     ctx.waitUntil(runDailyGamesGrader(env));
+    ctx.waitUntil(maybeRunDailyStatbotReport(env));
   },
 
   async fetch(request, env, ctx) {
@@ -109,6 +113,7 @@ async function route(request, env, ctx) {
   if (path.startsWith('/api/admin/streamers')) return handleAdminStreamers(request, env);
   if (path.startsWith('/api/admin/grader')) return handleAdminGrader(request, env);
   if (path === '/api/admin/emojis') return handleAdminEmojis(request, env);
+  if (path.startsWith('/api/admin/statbot/')) return handleAdminStatbot(request, env);
   if (path === '/api/admin/checkins/active-event') return handleAdminActiveEvent(request, env);
   if (path === '/api/admin/checkins/event-candidates') return handleAdminEventCandidates(request, env);
   if (path === '/api/admin/checkins') return handleAdminCheckins(request, env);
