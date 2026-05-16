@@ -123,12 +123,12 @@ function buildEmbed({ centralDate, sums30d, topChannels24h, topMembers24h }) {
       {
         name: 'Top Channels (24h)',
         value: formatTopTable(topChannels24h, channelName, CHANNEL_NAME_WIDTH),
-        inline: true,
+        inline: false,
       },
       {
         name: 'Top Members (24h)',
         value: formatTopTable(topMembers24h, memberName, MEMBER_NAME_WIDTH),
-        inline: true,
+        inline: false,
       },
     ],
     footer: { text: 'Powered by Statbot Premium' },
