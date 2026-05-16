@@ -106,12 +106,12 @@ export async function runDailyStatbotReport(env) {
 
 // ─── Embed formatting ────────────────────────────────────────────────────────
 
-// Code-block column widths. Tuned so two inline fields fit comfortably
-// side-by-side on a typical Discord client without wrapping. Channel names
-// can run long ("community-events", "introductions"), so they get more room;
-// member display names sit in a tighter column.
-const CHANNEL_NAME_WIDTH = 18;
-const MEMBER_NAME_WIDTH = 14;
+// Code-block column widths. Fields are stacked full-width, so we can afford
+// generous columns — sized to fit the realistic long names in this guild
+// (e.g. `#magic-the-gathering`, `#movies-tv-and-books` at 20 chars) without
+// truncation, while still wrapping at a reasonable point on mobile clients.
+const CHANNEL_NAME_WIDTH = 24;
+const MEMBER_NAME_WIDTH = 20;
 const COUNT_WIDTH = 4;
 
 function buildEmbed({ centralDate, sums30d, topChannels24h, topMembers24h }) {
