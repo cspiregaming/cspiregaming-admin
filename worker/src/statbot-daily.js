@@ -70,10 +70,12 @@ export async function buildDailyReport(env) {
     timezone_offset: tzOffset,
   };
 
+  // `bot: false` filters bots out of the member leaderboard — otherwise
+  // chat-active bots (e.g. Statbot itself, MEE6) would dominate the top spots.
   const [sums30d, topChannels24h, topMembers24h] = await Promise.all([
     fetchMessageSums(env, monthWindow),
     fetchTopMessageChannels(env, dayWindow),
-    fetchTopMessageMembers(env, dayWindow),
+    fetchTopMessageMembers(env, { ...dayWindow, bot: false }),
   ]);
 
   const embed = buildEmbed({
