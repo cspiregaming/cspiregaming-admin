@@ -538,10 +538,24 @@ tbody tr:hover td { background: var(--surface-raised); }
   line-height: 1.45;
 }
 .statbot-embed__title { font-weight: 600; font-size: 15px; margin-bottom: 10px; }
-.statbot-embed__field { margin-bottom: 10px; }
-.statbot-embed__field:last-child { margin-bottom: 0; }
+.statbot-embed__row { margin-bottom: 10px; }
+.statbot-embed__row:last-child { margin-bottom: 0; }
+.statbot-embed__row--inline { display: flex; gap: 16px; flex-wrap: wrap; }
+.statbot-embed__row--inline > .statbot-embed__field { flex: 1 1 0; min-width: 0; }
 .statbot-embed__field-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
 .statbot-embed__field-value { white-space: pre-wrap; color: var(--text); }
+.statbot-embed__code {
+  margin: 4px 0 0;
+  padding: 8px 10px;
+  background: var(--bg);
+  border-radius: 4px;
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--text);
+}
 .statbot-embed__footer { color: var(--text-muted); font-size: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 
 /* ─── Responsive ──────────────────────────────────────────────── */

@@ -70,12 +70,15 @@ export async function buildDailyReport(env) {
     timezone_offset: tzOffset,
   };
 
-  // `bot: false` filters bots out of the member leaderboard — otherwise
-  // chat-active bots (e.g. Statbot itself, MEE6) would dominate the top spots.
+  // `full: true` returns the expanded channel / member records (with name +
+  // display name) so the embed can render aligned name-only tables instead
+  // of opaque IDs. `bot: false` filters bots out of the member leaderboard
+  // so chat-active bots (Statbot itself, MEE6, etc.) don't dominate the top
+  // spots.
   const [sums30d, topChannels24h, topMembers24h] = await Promise.all([
     fetchMessageSums(env, monthWindow),
-    fetchTopMessageChannels(env, dayWindow),
-    fetchTopMessageMembers(env, { ...dayWindow, bot: false }),
+    fetchTopMessageChannels(env, { ...dayWindow, full: true }),
+    fetchTopMessageMembers(env, { ...dayWindow, full: true, bot: false }),
   ]);
 
   const embed = buildEmbed({
@@ -103,14 +106,30 @@ export async function runDailyStatbotReport(env) {
 
 // ─── Embed formatting ────────────────────────────────────────────────────────
 
+// Code-block column widths. Tuned so two inline fields fit comfortably
+// side-by-side on a typical Discord client without wrapping. Channel names
+// can run long ("community-events", "introductions"), so they get more room;
+// member display names sit in a tighter column.
+const CHANNEL_NAME_WIDTH = 18;
+const MEMBER_NAME_WIDTH = 14;
+const COUNT_WIDTH = 4;
+
 function buildEmbed({ centralDate, sums30d, topChannels24h, topMembers24h }) {
   return {
     title: `📊 Daily Stats Report — ${formatLongDate(centralDate)}`,
     color: 0x4c9fff,
     fields: [
       { name: 'Last 30 Days', value: formatSums(sums30d), inline: false },
-      { name: 'Top Channels (last 24h)', value: formatTop(topChannels24h, formatChannelEntry), inline: false },
-      { name: 'Top Members (last 24h)', value: formatTop(topMembers24h, formatMemberEntry), inline: false },
+      {
+        name: 'Top Channels (24h)',
+        value: formatTopTable(topChannels24h, channelName, CHANNEL_NAME_WIDTH),
+        inline: true,
+      },
+      {
+        name: 'Top Members (24h)',
+        value: formatTopTable(topMembers24h, memberName, MEMBER_NAME_WIDTH),
+        inline: true,
+      },
     ],
     footer: { text: 'Powered by Statbot Premium' },
     timestamp: new Date().toISOString(),
@@ -124,34 +143,49 @@ function formatSums(result) {
   return `**${count.toLocaleString('en-US')}** messages`;
 }
 
-function formatTop(result, formatEntry) {
-  if (!result?.ok) return `_(Statbot API error: ${escMd(result?.error || 'unknown')})_`;
+/**
+ * Build a monospace name+count table wrapped in a Discord code block. Inside
+ * a code block, channel and member mentions don't resolve, so the formatter
+ * returns plain names (with a `#` prefix for channels). For the actual post
+ * we accept that trade-off in exchange for clean column alignment.
+ */
+function formatTopTable(result, getName, nameWidth) {
+  if (!result?.ok) {
+    return `_(Statbot API error: ${escMd(result?.error || 'unknown')})_`;
+  }
   const items = asArray(result.json);
   if (!items.length) return '_(no activity)_';
-  const lines = items.slice(0, TOP_LIMIT).map((item, i) => `${i + 1}. ${formatEntry(item)}`);
-  return lines.join('\n');
+  const lines = items.slice(0, TOP_LIMIT).map(item => {
+    const name = truncatePad(getName(item), nameWidth);
+    const raw = pickNumber(item, ['count', 'messages', 'messageCount', 'value']);
+    const count = (raw == null ? '?' : String(raw)).padStart(COUNT_WIDTH);
+    return ` ${name} ${count}`;
+  });
+  return '```\n' + lines.join('\n') + '\n```';
 }
 
-function formatChannelEntry(item) {
-  const id = pickString(item, ['channelId', 'id'], pickString(item.channel, ['id']));
+function channelName(item) {
   const name = pickString(item, ['name'], pickString(item.channel, ['name']));
-  const count = pickNumber(item, ['count', 'messages', 'messageCount', 'value']);
-  const label = id ? `<#${id}>` : (name ? `#${escMd(name)}` : '_(unknown channel)_');
-  return `${label} — ${count == null ? '?' : count.toLocaleString('en-US')} msg`;
+  if (name) return `#${name}`;
+  const id = pickString(item, ['channelId', 'id'], pickString(item.channel, ['id']));
+  return id ? `#${id}` : '?';
 }
 
-function formatMemberEntry(item) {
-  const id = pickString(item, ['memberId', 'userId', 'id'], pickString(item.member, ['id']));
+function memberName(item) {
   const name = pickString(
     item,
     ['displayName', 'nickname', 'name', 'username'],
     pickString(item.member, ['displayName', 'nickname', 'name', 'username']),
   );
-  const count = pickNumber(item, ['count', 'messages', 'messageCount', 'value']);
-  // Prefer a real ping so the bot-commands channel reads naturally. If we
-  // only got a name back, fall back to a non-pinging label.
-  const label = id ? `<@${id}>` : (name ? `**${escMd(name)}**` : '_(unknown member)_');
-  return `${label} — ${count == null ? '?' : count.toLocaleString('en-US')} msg`;
+  if (name) return name;
+  const id = pickString(item, ['memberId', 'userId', 'id'], pickString(item.member, ['id']));
+  return id || '?';
+}
+
+function truncatePad(s, w) {
+  const str = String(s ?? '?');
+  if (str.length > w) return str.slice(0, w - 1) + '…';
+  return str.padEnd(w);
 }
 
 // ─── Defensive payload helpers ───────────────────────────────────────────────

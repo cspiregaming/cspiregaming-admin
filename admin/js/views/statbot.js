@@ -161,39 +161,80 @@ function renderChannels(status) {
 }
 
 /**
- * Render a Discord embed object as styled HTML. Approximates Discord's visual:
- * colored left border, dark card, title, fields with name + value. Channel and
- * user mentions are converted to inert <#id>/<@id> placeholders since the SPA
- * doesn't have the lookup data Discord does — the actual post will resolve them.
+ * Render a Discord embed object as styled HTML. Approximates Discord's
+ * layout:
+ *   - colored left border, dark card, title
+ *   - consecutive `inline: true` fields render in a row (flex)
+ *   - `inline: false` (or absent) fields take a full-width row
+ *   - triple-backtick values render as <pre> blocks
+ *   - inline mentions resolve to inert "@member-id" / "#channel-id" placeholders
+ *     since the SPA can't do the live Discord lookup (the actual post will)
  */
 function renderDiscordEmbed(embed) {
   const color = '#' + ((embed.color || 0x4c9fff) >>> 0).toString(16).padStart(6, '0');
-  const fields = (embed.fields || []).map(f => `
-    <div class="statbot-embed__field">
-      <div class="statbot-embed__field-name">${escHtml(f.name || '')}</div>
-      <div class="statbot-embed__field-value">${renderEmbedValue(f.value || '')}</div>
-    </div>
-  `).join('');
+  const rows = groupFieldsIntoRows(embed.fields || []);
+  const fieldsHtml = rows.map(row => {
+    if (row.length === 1) {
+      return `<div class="statbot-embed__row">${renderField(row[0])}</div>`;
+    }
+    return `<div class="statbot-embed__row statbot-embed__row--inline">${row.map(renderField).join('')}</div>`;
+  }).join('');
 
   return `
     <div class="statbot-embed" style="border-left-color:${escHtml(color)}">
       ${embed.title ? `<div class="statbot-embed__title">${escHtml(embed.title)}</div>` : ''}
-      ${fields}
+      ${fieldsHtml}
       ${embed.footer?.text ? `<div class="statbot-embed__footer">${escHtml(embed.footer.text)}</div>` : ''}
     </div>
   `;
 }
 
+function groupFieldsIntoRows(fields) {
+  // Discord packs consecutive inline:true fields into a row (max 3 per row);
+  // block (inline:false) fields force a row break and stand alone.
+  const rows = [];
+  let bucket = [];
+  for (const f of fields) {
+    if (f.inline) {
+      bucket.push(f);
+      if (bucket.length === 3) { rows.push(bucket); bucket = []; }
+    } else {
+      if (bucket.length) { rows.push(bucket); bucket = []; }
+      rows.push([f]);
+    }
+  }
+  if (bucket.length) rows.push(bucket);
+  return rows;
+}
+
+function renderField(f) {
+  return `
+    <div class="statbot-embed__field">
+      <div class="statbot-embed__field-name">${escHtml(f.name || '')}</div>
+      <div class="statbot-embed__field-value">${renderEmbedValue(f.value || '')}</div>
+    </div>
+  `;
+}
+
 function renderEmbedValue(value) {
+  const raw = String(value);
+
+  // Triple-backtick code block. Discord's actual renderer respects an optional
+  // language tag on the fence; we strip it for the preview since we're not
+  // syntax-highlighting anyway.
+  const codeFence = raw.match(/^```(?:\w*\n)?([\s\S]*?)```\s*$/);
+  if (codeFence) {
+    return `<pre class="statbot-embed__code">${escHtml(codeFence[1].replace(/^\n|\n$/g, ''))}</pre>`;
+  }
+
   // Order matters: escape first (so subsequent regex replacements get clean
   // HTML), then convert the small set of Discord-flavored tokens we emit
   // (bold, italic placeholders, channel/user mentions).
-  let v = escHtml(String(value));
+  let v = escHtml(raw);
   v = v.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
   v = v.replace(/_\((.+?)\)_/g, '<em style="color:var(--text-muted)">($1)</em>');
   v = v.replace(/&lt;#(\d+)&gt;/g, '<span style="color:var(--blue)">#channel-$1</span>');
   v = v.replace(/&lt;@(\d+)&gt;/g, '<span style="color:var(--blue)">@member-$1</span>');
-  // Preserve newlines.
   v = v.replace(/\n/g, '<br>');
   return v;
 }
