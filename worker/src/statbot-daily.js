@@ -157,7 +157,7 @@ function buildRepPromptEmbed({ centralDate, topMembers24h }) {
     const hlDisplay = memberName(highlight);
     if (hlId) {
       fields.push({
-        name: '🎲 Daily d200',
+        name: '🎮 Player of the Day',
         value: `<@${hlId}>\n\`\`\`\n/reputation user:@${hlDisplay}\n\`\`\``,
         inline: false,
       });
