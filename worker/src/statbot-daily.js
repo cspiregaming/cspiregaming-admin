@@ -147,7 +147,7 @@ function buildRepPromptEmbed({ centralDate, topMembers24h }) {
   if (topId) {
     fields.push({
       name: '👑 Top Poster',
-      value: `<@${topId}>\n\`/reputation user:@${topDisplay}\``,
+      value: `<@${topId}>\n\`\`\`\n/reputation user:@${topDisplay}\n\`\`\``,
       inline: false,
     });
   }
@@ -158,7 +158,7 @@ function buildRepPromptEmbed({ centralDate, topMembers24h }) {
     if (hlId) {
       fields.push({
         name: '🎲 Daily d200',
-        value: `<@${hlId}>\n\`/reputation user:@${hlDisplay}\``,
+        value: `<@${hlId}>\n\`\`\`\n/reputation user:@${hlDisplay}\n\`\`\``,
         inline: false,
       });
     }
