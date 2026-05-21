@@ -15,6 +15,7 @@ import {
   handleAdminGrader,
   handleAdminEmojis,
   handleAdminStatbot,
+  handleAdminWelcome,
 } from './routes/admin.js';
 import { handleInteractions } from './routes/interactions.js';
 import {
@@ -29,6 +30,7 @@ import {
 } from './routes/checkins.js';
 import { runDailyGamesGrader } from './games-grader-scheduler.js';
 import { maybeRunDailyStatbotReport } from './statbot-daily.js';
+import { maybeWelcomeNewMembers } from './welcome.js';
 
 const ALLOWED_ORIGINS = [
   'https://cspiregaming.github.io',
@@ -45,6 +47,7 @@ export default {
     // last-run guard so it fires exactly once per day.
     ctx.waitUntil(runDailyGamesGrader(env));
     ctx.waitUntil(maybeRunDailyStatbotReport(env));
+    ctx.waitUntil(maybeWelcomeNewMembers(env));
   },
 
   async fetch(request, env, ctx) {
@@ -114,6 +117,7 @@ async function route(request, env, ctx) {
   if (path.startsWith('/api/admin/grader')) return handleAdminGrader(request, env);
   if (path === '/api/admin/emojis') return handleAdminEmojis(request, env);
   if (path.startsWith('/api/admin/statbot/')) return handleAdminStatbot(request, env);
+  if (path.startsWith('/api/admin/welcome')) return handleAdminWelcome(request, env);
   if (path === '/api/admin/checkins/active-event') return handleAdminActiveEvent(request, env);
   if (path === '/api/admin/checkins/event-candidates') return handleAdminEventCandidates(request, env);
   if (path === '/api/admin/checkins') return handleAdminCheckins(request, env);

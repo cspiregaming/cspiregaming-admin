@@ -123,6 +123,10 @@ export const api = {
   updateStatbotChannels: enabledChannelIds =>
     apiFetch('/api/admin/statbot/channels', { method: 'PUT', body: JSON.stringify({ enabledChannelIds }) }),
 
+  // Welcome DM
+  getWelcomeConfig: () => apiFetch('/api/admin/welcome'),
+  updateWelcomeConfig: data => apiFetch('/api/admin/welcome', { method: 'PUT', body: JSON.stringify(data) }),
+
   // Event check-ins
   getActiveEvent: () => apiFetch('/api/admin/checkins/active-event'),
   setActiveEvent: data =>

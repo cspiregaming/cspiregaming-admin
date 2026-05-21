@@ -8,6 +8,7 @@ import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest, regi
 import { loadGraderConfig, saveGraderConfig, validateGraderConfig, DEFAULT_GRADER_CONFIG } from '../grader-config.js';
 import { gradeMessage } from '../games-grader.js';
 import { runDailyStatbotReport, buildDailyReport } from '../statbot-daily.js';
+import { DEFAULT_WELCOME_MESSAGE } from '../welcome.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -604,6 +605,46 @@ export async function handleAdminStatbot(request, env) {
   if (request.method === 'POST' && action === 'run') {
     const result = await runDailyStatbotReport(env);
     return jsonResponse(result);
+  }
+
+  return methodNotAllowed();
+}
+
+// ─── Welcome DM ─────────────────────────────────────────────────────────────
+
+/**
+ * GET  /api/admin/welcome  → { enabled, message, snapshotSize, bootstrapped }
+ * PUT  /api/admin/welcome  → body: { enabled?, message? }  (partial update)
+ */
+export async function handleAdminWelcome(request, env) {
+  await requireOfficer(request, env);
+
+  if (request.method === 'GET') {
+    const [rawConfig, rawSnapshot] = await Promise.all([
+      env.CONFIG.get('welcome_config'),
+      env.CONFIG.get('welcome_member_snapshot'),
+    ]);
+    const config = rawConfig ? JSON.parse(rawConfig) : {};
+    return jsonResponse({
+      enabled: config.enabled !== false,
+      message: config.message || DEFAULT_WELCOME_MESSAGE,
+      snapshotSize: rawSnapshot ? JSON.parse(rawSnapshot).length : null,
+      bootstrapped: rawSnapshot !== null,
+    });
+  }
+
+  if (request.method === 'PUT') {
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400); }
+    const rawConfig = await env.CONFIG.get('welcome_config');
+    const existing = rawConfig ? JSON.parse(rawConfig) : {};
+    const updated = {
+      ...existing,
+      ...(typeof body.enabled === 'boolean' ? { enabled: body.enabled } : {}),
+      ...(typeof body.message === 'string' && body.message.trim() ? { message: body.message } : {}),
+    };
+    await env.CONFIG.put('welcome_config', JSON.stringify(updated));
+    return jsonResponse({ ok: true, ...updated });
   }
 
   return methodNotAllowed();

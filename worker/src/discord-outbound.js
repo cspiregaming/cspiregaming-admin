@@ -45,6 +45,19 @@ export async function addReaction(env, channelId, messageId, emoji) {
   );
 }
 
+/**
+ * Open (or retrieve) a DM channel with a user, then send a plain-text message.
+ * Discord requires two calls: POST /users/@me/channels to get the DM channel
+ * ID, then POST /channels/{id}/messages to send.
+ */
+export async function sendDirectMessage(env, userId, content) {
+  const dmRes = await discordRequest(env, 'POST', '/users/@me/channels', { recipient_id: userId });
+  if (!dmRes.ok) return dmRes;
+  const channelId = dmRes.json?.id;
+  if (!channelId) return { ok: false, status: 0, error: 'no DM channel ID in response' };
+  return discordRequest(env, 'POST', `/channels/${channelId}/messages`, { content });
+}
+
 async function discordRequest(env, method, path, payload) {
   const botToken = env.BOT_TOKEN;
   if (!botToken) {
