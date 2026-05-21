@@ -564,7 +564,14 @@ export async function handleAdminStatbot(request, env) {
   const action = url.pathname.split('/').filter(Boolean)[3] || null;
 
   if (request.method === 'GET' && action === 'status') {
-    const lastRunDate = await env.CONFIG.get('statbot_last_run_date');
+    const [lastRunDate, savedTargets] = await Promise.all([
+      env.CONFIG.get('statbot_last_run_date'),
+      env.CONFIG.get('statbot_channel_targets'),
+    ]);
+    const allConfigured = [env.BOT_LOGS_CHANNEL_ID, env.BOT_COMMANDS_CHANNEL_ID].filter(Boolean);
+    const enabledChannelIds = savedTargets
+      ? JSON.parse(savedTargets).filter(id => allConfigured.includes(id))
+      : allConfigured;
     return jsonResponse({
       apiKeyConfigured: !!env.STATBOT_API_KEY,
       lastRunDate: lastRunDate || null,
@@ -572,7 +579,17 @@ export async function handleAdminStatbot(request, env) {
       centralNow: formatCentralNow(),
       logsChannelId: env.BOT_LOGS_CHANNEL_ID || null,
       commandsChannelId: env.BOT_COMMANDS_CHANNEL_ID || null,
+      enabledChannelIds,
     });
+  }
+
+  if (request.method === 'PUT' && action === 'channels') {
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400); }
+    const allConfigured = [env.BOT_LOGS_CHANNEL_ID, env.BOT_COMMANDS_CHANNEL_ID].filter(Boolean);
+    const enabled = (body.enabledChannelIds || []).filter(id => allConfigured.includes(id));
+    await env.CONFIG.put('statbot_channel_targets', JSON.stringify(enabled));
+    return jsonResponse({ ok: true, enabledChannelIds: enabled });
   }
 
   if (!env.STATBOT_API_KEY) {

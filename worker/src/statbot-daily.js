@@ -90,7 +90,10 @@ export async function buildDailyReport(env) {
 
 export async function runDailyStatbotReport(env) {
   const { embed, repPromptEmbed, raw } = await buildDailyReport(env);
-  const targets = [env.BOT_LOGS_CHANNEL_ID, env.BOT_COMMANDS_CHANNEL_ID].filter(Boolean);
+  const allTargets = [env.BOT_LOGS_CHANNEL_ID, env.BOT_COMMANDS_CHANNEL_ID].filter(Boolean);
+  const savedTargets = await env.CONFIG.get('statbot_channel_targets');
+  const enabledSet = savedTargets ? new Set(JSON.parse(savedTargets)) : new Set(allTargets);
+  const targets = allTargets.filter(id => enabledSet.has(id));
   const results = await Promise.all(
     targets.map(async channelId => {
       const main = await postChannelMessage(env, channelId, { embeds: [embed] });

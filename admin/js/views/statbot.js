@@ -51,7 +51,7 @@ export async function renderStatbot(container) {
           <tr><th>Last daily run</th><td>${status.lastRunDate ? escHtml(status.lastRunDate) : '<em style="color:var(--text-muted)">never</em>'}</td></tr>
           <tr><th>Next scheduled run</th><td>${escHtml(status.nextRunLabel)}</td></tr>
           <tr><th>Server time</th><td>${escHtml(status.centralNow)}</td></tr>
-          <tr><th>Posts to</th><td>${renderChannels(status)}</td></tr>
+          <tr><th>Posts to</th><td id="statbot-channel-chips">${renderChannelChips(status)}</td></tr>
         </table>
       </div>
 
@@ -80,6 +80,7 @@ export async function renderStatbot(container) {
       out.innerHTML = '<p style="color:var(--text-muted);font-size:13px">Cache cleared. Click Preview Embed or Preview Raw JSON to re-fetch.</p>';
     });
     document.getElementById('btn-post-now')?.addEventListener('click', onPostNow);
+    attachChannelChipListeners();
   }
 
   async function ensurePreview() {
@@ -145,6 +146,30 @@ export async function renderStatbot(container) {
     }
   }
 
+  function attachChannelChipListeners() {
+    document.querySelectorAll('[data-channel-chip]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = btn.dataset.channelChip;
+        const current = new Set(status.enabledChannelIds || []);
+        if (current.has(id)) current.delete(id); else current.add(id);
+        const enabledChannelIds = [...current];
+
+        btn.disabled = true;
+        try {
+          await api.updateStatbotChannels(enabledChannelIds);
+          status.enabledChannelIds = enabledChannelIds;
+          const cell = document.getElementById('statbot-channel-chips');
+          if (cell) {
+            cell.innerHTML = renderChannelChips(status);
+            attachChannelChipListeners();
+          }
+        } catch {
+          btn.disabled = false;
+        }
+      });
+    });
+  }
+
   render();
 }
 
@@ -156,11 +181,17 @@ function renderKeyBadge(configured) {
     : '<span class="badge" style="background:rgba(224,82,82,.2);color:var(--red)">missing — run <code>wrangler secret put STATBOT_API_KEY</code></span>';
 }
 
-function renderChannels(status) {
-  const parts = [];
-  if (status.logsChannelId) parts.push(`<code>#bot-logs</code> <span style="color:var(--text-muted);font-size:11px">(${escHtml(status.logsChannelId)})</span>`);
-  if (status.commandsChannelId) parts.push(`<code>#bot-commands</code> <span style="color:var(--text-muted);font-size:11px">(${escHtml(status.commandsChannelId)})</span>`);
-  return parts.length ? parts.join(', ') : '<em style="color:var(--text-muted)">no channels configured</em>';
+function renderChannelChips(status) {
+  const channels = [
+    { id: status.logsChannelId, name: '#bot-logs' },
+    { id: status.commandsChannelId, name: '#bot-commands' },
+  ].filter(c => c.id);
+  if (!channels.length) return '<em style="color:var(--text-muted)">no channels configured</em>';
+  const enabled = new Set(status.enabledChannelIds || []);
+  return channels.map(c => {
+    const active = enabled.has(c.id);
+    return `<button class="chip ${active ? 'is-active' : ''}" data-channel-chip="${escHtml(c.id)}" title="${active ? 'Enabled — click to disable' : 'Disabled — click to enable'}">${escHtml(c.name)}</button>`;
+  }).join(' ');
 }
 
 /**

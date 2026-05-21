@@ -120,6 +120,8 @@ export const api = {
   getStatbotStatus: () => apiFetch('/api/admin/statbot/status'),
   previewStatbot: () => apiFetch('/api/admin/statbot/preview'),
   runStatbot: () => apiFetch('/api/admin/statbot/run', { method: 'POST' }),
+  updateStatbotChannels: enabledChannelIds =>
+    apiFetch('/api/admin/statbot/channels', { method: 'PUT', body: JSON.stringify({ enabledChannelIds }) }),
 
   // Event check-ins
   getActiveEvent: () => apiFetch('/api/admin/checkins/active-event'),
