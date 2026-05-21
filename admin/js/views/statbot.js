@@ -94,11 +94,14 @@ export async function renderStatbot(container) {
     try {
       const data = await ensurePreview();
       if (mode === 'raw') {
-        const { embed: _embed, ...raw } = data;
+        const { embed: _embed, repPromptEmbed: _rep, ...raw } = data;
         out.innerHTML = `<pre class="statbot-json">${escHtml(JSON.stringify(raw, null, 2))}</pre>`;
       } else {
-        out.innerHTML = data.embed
-          ? renderDiscordEmbed(data.embed)
+        const parts = [];
+        if (data.embed) parts.push(renderDiscordEmbed(data.embed));
+        if (data.repPromptEmbed) parts.push(renderDiscordEmbed(data.repPromptEmbed));
+        out.innerHTML = parts.length
+          ? parts.join('<div style="height:8px"></div>')
           : '<div class="alert alert-error">No embed in preview response.</div>';
       }
     } catch (err) {
@@ -232,6 +235,7 @@ function renderEmbedValue(value) {
   // (bold, italic placeholders, channel/user mentions).
   let v = escHtml(raw);
   v = v.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  v = v.replace(/`([^`]+)`/g, '<code class="statbot-embed__inline-code">$1</code>');
   v = v.replace(/_\((.+?)\)_/g, '<em style="color:var(--text-muted)">($1)</em>');
   v = v.replace(/&lt;#(\d+)&gt;/g, '<span style="color:var(--blue)">#channel-$1</span>');
   v = v.replace(/&lt;@(\d+)&gt;/g, '<span style="color:var(--blue)">@member-$1</span>');

@@ -556,6 +556,7 @@ tbody tr:hover td { background: var(--surface-raised); }
   overflow-x: auto;
   color: var(--text);
 }
+.statbot-embed__inline-code { background: var(--bg); padding: 1px 4px; border-radius: 3px; font-family: ui-monospace, monospace; font-size: 0.85em; }
 .statbot-embed__footer { color: var(--text-muted); font-size: 12px; margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); }
 
 /* ─── Responsive ──────────────────────────────────────────────── */

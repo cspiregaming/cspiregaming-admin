@@ -81,25 +81,29 @@ export async function buildDailyReport(env) {
     fetchTopMessageMembers(env, { ...dayWindow, full: true, bot: false }),
   ]);
 
-  const embed = buildEmbed({
-    centralDate: centralDateParts().date,
-    sums30d,
-    topChannels24h,
-    topMembers24h,
-  });
+  const centralDate = centralDateParts().date;
+  const embed = buildEmbed({ centralDate, sums30d, topChannels24h, topMembers24h });
+  const repPromptEmbed = buildRepPromptEmbed({ centralDate, topMembers24h });
 
-  return { embed, raw: { sums30d, topChannels24h, topMembers24h } };
+  return { embed, repPromptEmbed, raw: { sums30d, topChannels24h, topMembers24h } };
 }
 
 export async function runDailyStatbotReport(env) {
-  const { embed, raw } = await buildDailyReport(env);
+  const { embed, repPromptEmbed, raw } = await buildDailyReport(env);
   const targets = [env.BOT_LOGS_CHANNEL_ID, env.BOT_COMMANDS_CHANNEL_ID].filter(Boolean);
   const results = await Promise.all(
-    targets.map(channelId => postChannelMessage(env, channelId, { embeds: [embed] })),
+    targets.map(async channelId => {
+      const main = await postChannelMessage(env, channelId, { embeds: [embed] });
+      const rep = repPromptEmbed
+        ? await postChannelMessage(env, channelId, { embeds: [repPromptEmbed] })
+        : null;
+      return { channelId, main, rep };
+    }),
   );
   return {
     embed,
-    posted: results.map((r, i) => ({ channelId: targets[i], ok: r.ok, status: r.status })),
+    repPromptEmbed,
+    posted: results.map(r => ({ channelId: r.channelId, ok: r.main.ok, status: r.main.status })),
     raw,
   };
 }
@@ -113,6 +117,59 @@ export async function runDailyStatbotReport(env) {
 const CHANNEL_NAME_WIDTH = 24;
 const MEMBER_NAME_WIDTH = 20;
 const COUNT_WIDTH = 4;
+
+/**
+ * Builds a follow-up embed that surfaces two copy-ready Tatsu `/reputation`
+ * commands: one for the day's #1 poster, and one for a random "d200" pick
+ * drawn from every other member who was active today.
+ *
+ * The highlight pool is `members.slice(1)`, which structurally excludes the
+ * #1 poster — no explicit re-roll loop needed.
+ *
+ * Returns null when there was no activity today or when IDs can't be resolved.
+ */
+function buildRepPromptEmbed({ centralDate, topMembers24h }) {
+  const members = asArray(topMembers24h?.json);
+  if (!topMembers24h?.ok || !members.length) return null;
+
+  const top = members[0];
+  const topId = pickMemberId(top);
+  const topDisplay = memberName(top);
+
+  const pool = members.slice(1);
+  const highlight = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+
+  const fields = [];
+
+  if (topId) {
+    fields.push({
+      name: '👑 Top Poster',
+      value: `<@${topId}>\n\`/reputation user:@${topDisplay}\``,
+      inline: false,
+    });
+  }
+
+  if (highlight) {
+    const hlId = pickMemberId(highlight);
+    const hlDisplay = memberName(highlight);
+    if (hlId) {
+      fields.push({
+        name: '🎲 Daily d200',
+        value: `<@${hlId}>\n\`/reputation user:@${hlDisplay}\``,
+        inline: false,
+      });
+    }
+  }
+
+  if (!fields.length) return null;
+
+  return {
+    title: `🏅 Give Some Rep — ${formatLongDate(centralDate)}`,
+    color: 0xffd700,
+    fields,
+    footer: { text: 'Powered by Statbot Premium' },
+  };
+}
 
 function buildEmbed({ centralDate, sums30d, topChannels24h, topMembers24h }) {
   return {
@@ -169,6 +226,10 @@ function channelName(item) {
   if (name) return `#${name}`;
   const id = pickString(item, ['channelId', 'id'], pickString(item.channel, ['id']));
   return id ? `#${id}` : '?';
+}
+
+function pickMemberId(item) {
+  return pickString(item, ['memberId', 'userId', 'id'], pickString(item?.member, ['id']));
 }
 
 function memberName(item) {

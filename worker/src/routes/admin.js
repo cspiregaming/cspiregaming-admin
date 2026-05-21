@@ -580,8 +580,8 @@ export async function handleAdminStatbot(request, env) {
   }
 
   if (request.method === 'GET' && action === 'preview') {
-    const { embed, raw } = await buildDailyReport(env);
-    return jsonResponse({ embed, ...raw });
+    const { embed, repPromptEmbed, raw } = await buildDailyReport(env);
+    return jsonResponse({ embed, repPromptEmbed, ...raw });
   }
 
   if (request.method === 'POST' && action === 'run') {
