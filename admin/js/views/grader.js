@@ -63,6 +63,7 @@ export async function renderGrader(container) {
           The <strong>wordle</strong> parser needs one capture group that holds the score token (a digit or <code>X</code>).
           The <strong>framed</strong> parser scores by the first 🟩 in a 6-square row.
           The <strong>connections</strong> parser scores 1&nbsp;+&nbsp;mistakes and requires a "Puzzle #N" line.
+          The <strong>strands</strong> parser scores by hints used (💡 count&nbsp;+&nbsp;1), capped at score6; no miss state.
         </p>
         <div id="boards-list">
           ${renderBoardsList()}
@@ -194,6 +195,7 @@ export async function renderGrader(container) {
       wordle: '^Wordle\\s+\\S+\\s+([X1-6])/6\\*?',
       framed: '^Framed\\s+#\\d+',
       connections: '^Connections\\b',
+      strands: '^Strands\\s+#\\d+',
     };
     const dialog = document.createElement('div');
     dialog.className = 'grader-board-dialog';
@@ -281,6 +283,7 @@ export async function renderGrader(container) {
       case 'wordle':      return 'Must contain one capture group for the score token (a digit or "X"). E.g. ^Wordle.*?([X1-6])/6\\*?';
       case 'framed':      return 'Just a presence gate — scoring uses the first 🟩 in any 6-square line of the message.';
       case 'connections': return 'Just a presence gate — scoring uses solid same-color rows of 4 squares plus a "Puzzle #N" line.';
+      case 'strands':     return 'Just a presence gate — scoring counts 💡 hint emojis (score = hints + 1, capped at score6). No miss state.';
       default:            return '';
     }
   }

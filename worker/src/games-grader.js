@@ -11,6 +11,8 @@
  *   - framed      → header regex gates; score = first 🟩 in a 6-square row
  *   - connections → header regex gates; score = 1 + mistake rows (solid same-
  *                   color rows count as solved groups)
+ *   - strands     → header regex gates; score = hints used + 1 (💡 count),
+ *                   capped at score6; no miss state
  *
  * Legend (score → emoji) and the per-board header regex live in
  * `CONFIG:grader_config` — editable from the Daily Games admin view. See
@@ -42,6 +44,7 @@ function runBoard(board, content, legend) {
     case 'wordle':      return parseWordle(board, match, legend);
     case 'framed':      return parseFramed(board, content, legend);
     case 'connections': return parseConnections(board, content, legend);
+    case 'strands':     return parseStrands(board, content, legend);
     default:            return null;
   }
 }
@@ -130,5 +133,31 @@ function parseConnections(board, content, legend) {
     return { game: board.id, score: null, emoji: legend.miss, fail: true };
   }
   const score = mistakes + 1;
+  return { game: board.id, score, emoji: legend[`score${score}`], fail: false };
+}
+
+// ─── Strands-style ──────────────────────────────────────────────────────────
+//
+// Format:
+//   Strands #813
+//   "Thank you"
+//   🔵🔵🟡🔵
+//   🔵🔵
+//
+// 🔵 = word found, 🟡 = spangram found, 💡 = hint used.
+// Score = hints + 1 (0 hints → score1), capped at score6. No miss state.
+
+function parseStrands(board, content, legend) {
+  let hints = 0;
+  let hasGrid = false;
+  for (const line of content.split('\n')) {
+    for (const ch of line) {
+      const cp = ch.codePointAt(0);
+      if (cp === 0x1F4A1) hints++;                       // 💡
+      if (cp === 0x1F535 || cp === 0x1F7E1) hasGrid = true; // 🔵 🟡
+    }
+  }
+  if (!hasGrid) return null;
+  const score = Math.min(hints + 1, 6);
   return { game: board.id, score, emoji: legend[`score${score}`], fail: false };
 }

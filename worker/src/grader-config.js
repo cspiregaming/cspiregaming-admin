@@ -54,7 +54,7 @@ export const DEFAULT_GRADER_CONFIG = Object.freeze({
 });
 
 const KV_KEY = 'grader_config';
-export const PARSER_TYPES = ['wordle', 'framed', 'connections'];
+export const PARSER_TYPES = ['wordle', 'framed', 'connections', 'strands'];
 export const LEGEND_KEYS = ['score1', 'score2', 'score3', 'score4', 'score5', 'score6', 'miss'];
 
 export async function loadGraderConfig(env) {
