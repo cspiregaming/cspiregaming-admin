@@ -48,7 +48,7 @@ async function fetchMatchPlayPayloads(env, tournamentId) {
   const registrationUrl = `https://app.matchplay.events/tournaments/${tournamentId}`;
 
   const mpData = tournament?.data ?? tournament;
-  const startTime = mpData?.startTime ?? mpData?.start_time ?? null;
+  const startTime = mpData?.startUtc ?? null;
 
   return {
     name,
