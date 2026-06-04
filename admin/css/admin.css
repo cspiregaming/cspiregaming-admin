@@ -342,6 +342,7 @@ tbody tr:hover td { background: var(--surface-raised); }
 
 .badge { display: inline-block; padding: 2px 8px; border-radius: 980px; font-size: 11px; font-weight: 600; }
 .badge-green { background: rgba(72,157,77,.2); color: var(--green); }
+.badge-blue  { background: rgba(88,101,242,.2); color: #8b9cf8; }
 .badge-muted { background: var(--surface-raised); color: var(--text-muted); }
 
 /* ─── Toggle switch ───────────────────────────────────────────── */

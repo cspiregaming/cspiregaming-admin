@@ -1,4 +1,4 @@
-import { requireAuth, requireOfficer, requireMod, getTier, parseRoleList, buildOAuthUrl, signJwt } from '../auth.js';
+import { requireAuth, requireOfficer, requireMod, requireTournamentStaff, getTier, parseRoleList, buildOAuthUrl, signJwt } from '../auth.js';
 import { discordOAuthExchange, fetchGuildEmojis, fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 import * as eventPublishRequests from '../event-publish-requests.js';
@@ -37,15 +37,17 @@ export async function handleAuthCallback(request, env) {
 
   const { user, member } = await discordOAuthExchange(env, code, redirectUri);
 
-  // Sign-in gate: officers (ADMIN_ROLE_ID) and mods (any MOD_ROLE_IDS role)
-  // can sign in. Mods get a narrower set of admin actions enforced per-endpoint
-  // via requireOfficer / requireMod.
+  // Sign-in gate: officers (ADMIN_ROLE_ID), mods (MOD_ROLE_IDS), and tournament
+  // staff (TOURNAMENT_ADMIN_ROLE_ID / TOURNAMENT_STAFF_ROLE_ID) may sign in.
+  // Each group gets a narrower set of actions enforced per-endpoint.
   const adminRoleId = env.ADMIN_ROLE_ID;
   const modRoleIds = parseRoleList(env.MOD_ROLE_IDS);
+  const tournamentRoleIds = [env.TOURNAMENT_ADMIN_ROLE_ID, env.TOURNAMENT_STAFF_ROLE_ID].filter(Boolean);
   const memberRoles = member.roles || [];
   const isOfficer = adminRoleId && memberRoles.includes(adminRoleId);
   const isMod = modRoleIds.some(r => memberRoles.includes(r));
-  if (adminRoleId && !isOfficer && !isMod) {
+  const isTournamentStaff = tournamentRoleIds.some(r => memberRoles.includes(r));
+  if (adminRoleId && !isOfficer && !isMod && !isTournamentStaff) {
     return Response.redirect(`${adminUrl}/?error=not_authorized`, 302);
   }
 
@@ -720,7 +722,7 @@ function formatCentralNow() {
  * DELETE /api/admin/tournament/:platform/:id        → remove KV state
  */
 export async function handleAdminTournament(request, env) {
-  await requireOfficer(request, env);
+  await requireTournamentStaff(request, env);
 
   const url = new URL(request.url);
   // path: /api/admin/tournament[/:platform[/:id[/action]]]

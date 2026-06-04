@@ -17,7 +17,7 @@ import { renderTournament } from './views/tournament.js';
 // ─── State ──────────────────────────────────────────────────────
 let currentSection = 'dashboard';
 let sessionUser = null;
-let sessionTier = 'officer'; // 'officer' | 'mod'
+let sessionTier = 'officer'; // 'officer' | 'mod' | 'tournament'
 
 export function getSessionTier() { return sessionTier; }
 
@@ -74,7 +74,7 @@ function showLoginError(error) {
   if (!el) return;
   const messages = {
     oauth_denied: 'You cancelled the Discord login.',
-    not_authorized: 'Your Discord account does not have officer or mod access to this server.',
+    not_authorized: 'Your Discord account does not have officer, mod, or tournament staff access to this server.',
   };
   el.innerHTML = `<div class="alert alert-error">${messages[error] || 'Login failed. Please try again.'}</div>`;
 }
@@ -90,7 +90,7 @@ const NAV_ITEMS = [
   { section: 'officers',   icon: '⭐', label: 'Officers',       tiers: ['officer'] },
   { section: 'events',     icon: '📅', label: 'Events',         tiers: ['officer'] },
   { section: 'checkins',   icon: '📝', label: 'Check-Ins',      tiers: ['officer'] },
-  { section: 'tournament', icon: '🏆', label: 'Tournament',      tiers: ['officer'] },
+  { section: 'tournament', icon: '🏆', label: 'Tournament',      tiers: ['officer', 'tournament'] },
   { section: 'streamers',  icon: '🎮', label: 'Streamers',      tiers: ['officer'] },
   { section: 'grader',     icon: '🎯', label: 'Daily Games',    tiers: ['officer', 'mod'] },
   { section: 'emojis',     icon: '😀', label: 'Custom Emojis',  tiers: ['officer', 'mod'] },
@@ -103,7 +103,7 @@ const NAV_ITEMS = [
 function renderApp() {
   const visibleNav = NAV_ITEMS.filter(item => item.tiers.includes(sessionTier));
   const firstSection = visibleNav[0]?.section || 'grader';
-  const tierLabel = sessionTier === 'officer' ? 'Officer' : 'Mod';
+  const tierLabel = sessionTier === 'officer' ? 'Officer' : sessionTier === 'tournament' ? 'Tournament Staff' : 'Mod';
 
   document.body.innerHTML = `
     <div class="app">
@@ -125,7 +125,7 @@ function renderApp() {
         <div class="sidebar__user" id="sidebar-user">
           <span style="color:var(--text-muted);font-size:12px">
             Signed in${sessionUser ? ` · ${escHtml(sessionUser.displayName)}` : ''}
-            <br><span class="badge ${sessionTier === 'officer' ? 'badge-green' : 'badge-muted'}" style="margin-top:4px">${tierLabel}</span>
+            <br><span class="badge ${sessionTier === 'officer' ? 'badge-green' : sessionTier === 'tournament' ? 'badge-blue' : 'badge-muted'}" style="margin-top:4px">${tierLabel}</span>
           </span>
         </div>
       </nav>

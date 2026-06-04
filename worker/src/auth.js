@@ -73,9 +73,10 @@ export async function requireAuth(request, env) {
 
 /**
  * Compute the access tier of a signed-in user from their JWT payload.
- *  - 'officer' → has ADMIN_ROLE_ID
- *  - 'mod'     → holds any role listed in MOD_ROLE_IDS (but not ADMIN_ROLE_ID)
- *  - null      → neither (shouldn't normally happen — sign-in gate rejects)
+ *  - 'officer'    → has ADMIN_ROLE_ID
+ *  - 'mod'        → holds any role listed in MOD_ROLE_IDS (but not ADMIN_ROLE_ID)
+ *  - 'tournament' → holds TOURNAMENT_ADMIN_ROLE_ID or TOURNAMENT_STAFF_ROLE_ID only
+ *  - null         → none of the above (shouldn't normally happen — sign-in gate rejects)
  *
  * Legacy tokens (issued before we started embedding `roles` in the JWT) were
  * only handed out to ADMIN_ROLE_ID holders, so treat a missing `roles` array
@@ -87,6 +88,8 @@ export function getTier(payload, env) {
   if (adminRoleId && payload.roles.includes(adminRoleId)) return 'officer';
   const modRoleIds = parseRoleList(env.MOD_ROLE_IDS);
   if (modRoleIds.some(r => r !== adminRoleId && payload.roles.includes(r))) return 'mod';
+  const tournamentRoleIds = [env.TOURNAMENT_ADMIN_ROLE_ID, env.TOURNAMENT_STAFF_ROLE_ID].filter(Boolean);
+  if (tournamentRoleIds.some(r => payload.roles.includes(r))) return 'tournament';
   return null;
 }
 
@@ -101,6 +104,13 @@ export async function requireMod(request, env) {
   const tier = getTier(payload, env);
   if (tier === 'officer' || tier === 'mod') return payload;
   throw forbiddenResponse('Officer or mod access required.');
+}
+
+export async function requireTournamentStaff(request, env) {
+  const payload = await requireAuth(request, env);
+  const tier = getTier(payload, env);
+  if (tier === 'officer' || tier === 'tournament') return payload;
+  throw forbiddenResponse('Tournament staff access required.');
 }
 
 export function parseRoleList(commaList) {
