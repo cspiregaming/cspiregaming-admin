@@ -129,6 +129,9 @@ export const api = {
 
   // Tournament (MatchPlay + Challonge)
   getTournaments: () => apiFetch('/api/admin/tournament'),
+  getOrganizers: () => apiFetch('/api/admin/tournament/organizers/matchplay'),
+  addOrganizer: id => apiFetch('/api/admin/tournament/organizers/matchplay', { method: 'POST', body: JSON.stringify({ id }) }),
+  removeOrganizer: id => apiFetch(`/api/admin/tournament/organizers/matchplay/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   tournamentAnnounce: (platform, id) => apiFetch(`/api/admin/tournament/${encodeURIComponent(platform)}/${encodeURIComponent(id)}/announce`, { method: 'POST' }),
   tournamentLive: (platform, id) => apiFetch(`/api/admin/tournament/${encodeURIComponent(platform)}/${encodeURIComponent(id)}/live`, { method: 'POST' }),
   tournamentEnd: (platform, id) => apiFetch(`/api/admin/tournament/${encodeURIComponent(platform)}/${encodeURIComponent(id)}/end`, { method: 'POST' }),

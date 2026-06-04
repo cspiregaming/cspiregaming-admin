@@ -72,12 +72,14 @@ TOURNAMENT_SUPPORT_CHANNEL_ID       = "1400291558238060664"
 # Roles that may run /tournament announce|live|end (either role passes).
 TOURNAMENT_ADMIN_ROLE_ID            = "1400290763459526786"
 TOURNAMENT_STAFF_ROLE_ID            = "1400291100337504358"
-# Default tournament IDs used when no tournament-id is passed to a slash command.
+# Default tournament IDs — used when no tournament-id is passed to a slash command.
 MATCHPLAY_TOURNAMENT_ID             = "255077"
 CHALLONGE_TOURNAMENT_ID             = ""
-# MatchPlay organizer ID — used by /tournament register to find open tournaments.
-# Find it in the MatchPlay URL when viewing your organizer profile.
-MATCHPLAY_ORGANIZER_ID              = ""
+# Challonge community subdomain for cspiregaming.challonge.com tournaments.
+CHALLONGE_SUBDOMAIN                 = "cspiregaming"
+# Bootstrap MatchPlay organizer ID — used when the KV organizer list is empty.
+# Additional organizers are managed in the admin SPA (Tournament → MatchPlay Organizers).
+MATCHPLAY_ORGANIZER_ID              = "57756"
 # Secrets (set via `wrangler secret put <KEY>`):
 #   MATCHPLAY_API_KEY   — MatchPlay API key
 #   CHALLONGE_API_KEY   — Challonge API key

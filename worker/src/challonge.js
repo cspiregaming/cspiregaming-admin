@@ -34,9 +34,11 @@ async function challongeRequest(env, path, params = {}) {
   }
 }
 
-// List tournaments owned by the API key holder. state: pending|underway|complete|etc.
+// List pending (registration-open) tournaments. Scoped to CHALLONGE_SUBDOMAIN when set.
 export function getOpenTournaments(env) {
-  return challongeRequest(env, '/tournaments', { state: 'pending' });
+  const params = { state: 'pending' };
+  if (env.CHALLONGE_SUBDOMAIN) params.subdomain = env.CHALLONGE_SUBDOMAIN;
+  return challongeRequest(env, '/tournaments', params);
 }
 
 export function getTournament(env, tournamentId) {

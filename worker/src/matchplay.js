@@ -37,11 +37,10 @@ export function getTournament(env, tournamentId) {
   return matchplayRequest(env, `/tournaments/${tournamentId}?includePlayers=true&includeArenas=true`);
 }
 
-// Requires MATCHPLAY_ORGANIZER_ID — returns tournaments with status=planned (registration open).
-export function getOpenTournaments(env) {
-  const ownerId = env.MATCHPLAY_ORGANIZER_ID;
-  if (!ownerId) return Promise.resolve(null);
-  return matchplayRequest(env, `/tournaments?status=planned&owner=${ownerId}`);
+// Returns planned (registration-open) tournaments for a single organizer ID.
+// The platform layer is responsible for fanning out across multiple organizers.
+export function getOrganizerTournaments(env, organizerId) {
+  return matchplayRequest(env, `/tournaments?status=planned&owner=${organizerId}`);
 }
 
 export function getStandings(env, tournamentId) {

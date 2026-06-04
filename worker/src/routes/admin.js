@@ -10,7 +10,7 @@ import { gradeMessage } from '../games-grader.js';
 import { runDailyStatbotReport, buildDailyReport } from '../statbot-daily.js';
 import { DEFAULT_WELCOME_MESSAGE } from '../welcome.js';
 import { announceTournament, startLiveTournament, endTournament } from '../tournament-actions.js';
-import { buildStateKey, VALID_PLATFORMS } from '../tournament-platform.js';
+import { buildStateKey, VALID_PLATFORMS, getMatchPlayOrganizerIds, MATCHPLAY_ORGANIZERS_KEY } from '../tournament-platform.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -751,6 +751,12 @@ export async function handleAdminTournament(request, env) {
     });
   }
 
+  // Organizer management — separate sub-resource, not a platform action.
+  // Routes: /api/admin/tournament/organizers/matchplay[/:id]
+  if (platform === 'organizers') {
+    return handleAdminTournamentOrganizers(request, env, parts);
+  }
+
   if (!platform || !VALID_PLATFORMS.includes(platform)) {
     return jsonResponse({ error: 'Invalid or missing platform. Use matchplay or challonge.' }, 400);
   }
@@ -780,6 +786,51 @@ export async function handleAdminTournament(request, env) {
   if (request.method === 'DELETE' && !action) {
     await env.CONFIG.delete(buildStateKey(platform, tournamentId));
     return jsonResponse({ ok: true });
+  }
+
+  return methodNotAllowed();
+}
+
+// ─── Tournament organizers ────────────────────────────────────────────────────
+
+/**
+ * GET    /api/admin/tournament/organizers/matchplay         → { ids: string[] }
+ * POST   /api/admin/tournament/organizers/matchplay         → body: { id } → { ids }
+ * DELETE /api/admin/tournament/organizers/matchplay/:id     → { ids }
+ *
+ * The stored list is the source of truth. The MATCHPLAY_ORGANIZER_ID env var
+ * is only used as a fallback when the KV list is empty (bootstrap seed).
+ */
+async function handleAdminTournamentOrganizers(request, env, parts) {
+  // parts: ['api','admin','tournament','organizers', platform?, organizerId?]
+  const subPlatform = parts[4] || null;
+  const organizerId = parts[5] ? safeDecode(parts[5]) : null;
+
+  if (subPlatform !== 'matchplay') {
+    return jsonResponse({ error: 'Only matchplay organizers are supported.' }, 400);
+  }
+
+  const ids = await getMatchPlayOrganizerIds(env);
+
+  if (request.method === 'GET') {
+    return jsonResponse({ ids });
+  }
+
+  if (request.method === 'POST') {
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400); }
+    const newId = String(body.id || '').trim();
+    if (!newId) return jsonResponse({ error: 'id is required' }, 400);
+    if (ids.includes(newId)) return jsonResponse({ ids }); // already present — idempotent
+    const updated = [...ids, newId];
+    await env.CONFIG.put(MATCHPLAY_ORGANIZERS_KEY, JSON.stringify(updated));
+    return jsonResponse({ ids: updated });
+  }
+
+  if (request.method === 'DELETE' && organizerId) {
+    const updated = ids.filter(id => id !== organizerId);
+    await env.CONFIG.put(MATCHPLAY_ORGANIZERS_KEY, JSON.stringify(updated));
+    return jsonResponse({ ids: updated });
   }
 
   return methodNotAllowed();

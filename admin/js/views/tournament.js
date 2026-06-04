@@ -1,6 +1,78 @@
 import { api } from '../api.js';
 import { escHtml } from '../app.js';
 
+// ─── Organizer management ────────────────────────────────────────────────────
+
+async function loadOrganizers() {
+  try {
+    const data = await api.getOrganizers();
+    return data.ids ?? [];
+  } catch {
+    return [];
+  }
+}
+
+function renderOrganizersCard(ids) {
+  const rows = ids.length
+    ? ids.map(id => `
+        <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.06)">
+          <code style="flex:1">${escHtml(id)}</code>
+          <a href="https://app.matchplay.events/organizers/${escHtml(id)}" target="_blank" rel="noopener" style="font-size:12px;color:var(--text-muted)">↗</a>
+          <button class="btn btn-ghost" style="font-size:12px;padding:3px 8px" data-remove-organizer="${escHtml(id)}">Remove</button>
+        </div>`).join('')
+    : '<p style="color:var(--text-muted);font-size:13px;margin:0">No organizers configured. Add one below to enable /tournament register for MatchPlay events.</p>';
+
+  return `
+    <div class="card" style="margin-bottom:16px" id="organizers-card">
+      <h2 style="margin-top:0">MatchPlay Organizers</h2>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:12px">
+        Open-registration tournaments are discovered for each organizer listed here.
+        The env var <code>MATCHPLAY_ORGANIZER_ID</code> is used as a fallback when this list is empty.
+      </p>
+      <div id="organizer-list">${rows}</div>
+      <div style="display:flex;gap:8px;margin-top:12px;align-items:center">
+        <input id="organizer-id-input" class="input" placeholder="Organizer ID (e.g. 57756)" style="flex:1;max-width:220px">
+        <button class="btn btn-outline" id="btn-add-organizer">Add</button>
+      </div>
+      <div id="organizer-feedback" style="margin-top:8px"></div>
+    </div>
+  `;
+}
+
+function attachOrganizerListeners(onUpdate) {
+  document.getElementById('btn-add-organizer')?.addEventListener('click', async () => {
+    const input = document.getElementById('organizer-id-input');
+    const id = input?.value?.trim();
+    const feedback = document.getElementById('organizer-feedback');
+    if (!id) { feedback.innerHTML = '<span style="color:var(--red);font-size:13px">Enter an organizer ID.</span>'; return; }
+    const btn = document.getElementById('btn-add-organizer');
+    btn.disabled = true; btn.textContent = '…';
+    feedback.innerHTML = '';
+    try {
+      const result = await api.addOrganizer(id);
+      if (input) input.value = '';
+      onUpdate(result.ids);
+    } catch (err) {
+      feedback.innerHTML = `<span style="color:var(--red);font-size:13px">Failed: ${escHtml(err.message)}</span>`;
+    } finally {
+      btn.disabled = false; btn.textContent = 'Add';
+    }
+  });
+
+  document.querySelectorAll('[data-remove-organizer]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const id = btn.dataset.removeOrganizer;
+      btn.disabled = true;
+      try {
+        const result = await api.removeOrganizer(id);
+        onUpdate(result.ids);
+      } catch {
+        btn.disabled = false;
+      }
+    });
+  });
+}
+
 const PLATFORMS = ['matchplay', 'challonge'];
 const PLATFORM_LABEL = { matchplay: 'MatchPlay', challonge: 'Challonge' };
 const PLATFORM_COLOR = { matchplay: 'var(--blue)', challonge: '#f5a623' };
@@ -8,9 +80,9 @@ const PLATFORM_COLOR = { matchplay: 'var(--blue)', challonge: '#f5a623' };
 export async function renderTournament(container) {
   container.innerHTML = '<div class="loading">Loading…</div>';
 
-  let data;
+  let data, organizerIds;
   try {
-    data = await api.getTournaments();
+    [data, organizerIds] = await Promise.all([api.getTournaments(), loadOrganizers()]);
   } catch (err) {
     container.innerHTML = `<div class="alert alert-error">Failed to load: ${escHtml(err.message)}</div>`;
     return;
@@ -30,6 +102,7 @@ export async function renderTournament(container) {
       </p>
 
       ${renderConfigCard(apiKeys, defaults, notificationsChannelId)}
+      ${renderOrganizersCard(organizerIds)}
       ${renderAddCard(apiKeys, defaults)}
 
       ${active.length ? `
@@ -59,6 +132,16 @@ export async function renderTournament(container) {
   }
 
   function attachListeners() {
+    // Organizer management (re-renders only the organizer card on change)
+    attachOrganizerListeners(updatedIds => {
+      organizerIds = updatedIds;
+      const card = document.getElementById('organizers-card');
+      if (card) {
+        card.outerHTML = renderOrganizersCard(organizerIds);
+        attachOrganizerListeners(ids2 => { organizerIds = ids2; });
+      }
+    });
+
     // Add-tournament form
     document.getElementById('btn-add-announce')?.addEventListener('click', () => runAddAction('announce'));
     document.getElementById('btn-add-live')?.addEventListener('click', () => runAddAction('live'));

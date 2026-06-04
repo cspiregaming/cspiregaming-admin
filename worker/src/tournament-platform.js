@@ -11,6 +11,8 @@
  */
 
 import * as matchplay from './matchplay.js';
+
+export const MATCHPLAY_ORGANIZERS_KEY = 'tournament:matchplay:organizers';
 import * as challonge from './challonge.js';
 import {
   buildMaps as mpBuildMaps,
@@ -82,44 +84,62 @@ async function fetchChallongePayloads(env, tournamentId) {
 
 /**
  * Query both platforms for tournaments with open registration.
+ *
+ * MatchPlay: fans out one request per organizer stored in KV
+ *   (key: tournament:matchplay:organizers → string[]).
+ *   Falls back to MATCHPLAY_ORGANIZER_ID env var when the KV list is empty.
+ *
+ * Challonge: single request, scoped to CHALLONGE_SUBDOMAIN when set.
+ *
  * Silently skips a platform if its API key is missing.
  */
 export async function getOpenTournaments(env) {
-  const [mpResult, chResult] = await Promise.allSettled([
-    matchplay.getOpenTournaments(env),
-    challonge.getOpenTournaments(env),
+  const organizerIds = await getMatchPlayOrganizerIds(env);
+
+  const [mpResults, chResult] = await Promise.all([
+    Promise.allSettled(organizerIds.map(id => matchplay.getOrganizerTournaments(env, id))),
+    Promise.allSettled([challonge.getOpenTournaments(env)]),
   ]);
 
   const open = [];
+  const seen = new Set();
 
-  // MatchPlay — response: { data: [{ tournamentId, name, status, ... }] }
-  const mpList = mpResult.status === 'fulfilled' ? (mpResult.value?.data ?? []) : [];
-  for (const t of Array.isArray(mpList) ? mpList : []) {
-    if (t.status === 'planned') {
-      open.push({
-        platform: 'matchplay',
-        id: String(t.tournamentId),
-        name: t.name,
-        registrationUrl: `https://app.matchplay.events/tournaments/${t.tournamentId}`,
-      });
+  // MatchPlay — merge results across all organizers, deduplicate by tournamentId.
+  for (const r of mpResults) {
+    const list = r.status === 'fulfilled' ? (r.value?.data ?? []) : [];
+    for (const t of Array.isArray(list) ? list : []) {
+      if (t.status === 'planned' && !seen.has(String(t.tournamentId))) {
+        seen.add(String(t.tournamentId));
+        open.push({
+          platform: 'matchplay',
+          id: String(t.tournamentId),
+          name: t.name,
+          registrationUrl: `https://app.matchplay.events/tournaments/${t.tournamentId}`,
+        });
+      }
     }
   }
 
   // Challonge — response: [{ tournament: {...} }, ...]
-  const chList = chResult.status === 'fulfilled' ? chResult.value : null;
+  const chList = chResult[0]?.status === 'fulfilled' ? chResult[0].value : null;
   for (const item of Array.isArray(chList) ? chList : []) {
     const t = challonge.normalizeTournament(item);
     if (t.registrationOpen) {
-      open.push({
-        platform: 'challonge',
-        id: t.id,
-        name: t.name,
-        registrationUrl: t.url,
-      });
+      open.push({ platform: 'challonge', id: t.id, name: t.name, registrationUrl: t.url });
     }
   }
 
   return open;
+}
+
+/**
+ * Load MatchPlay organizer IDs from KV.
+ * Falls back to MATCHPLAY_ORGANIZER_ID env var (the bootstrap seed) when KV is empty.
+ */
+export async function getMatchPlayOrganizerIds(env) {
+  const stored = await env.CONFIG.get(MATCHPLAY_ORGANIZERS_KEY, 'json').catch(() => null);
+  if (Array.isArray(stored) && stored.length) return stored;
+  return env.MATCHPLAY_ORGANIZER_ID ? [env.MATCHPLAY_ORGANIZER_ID] : [];
 }
 
 /** Parse platform and tournamentId from a KV state key. */
