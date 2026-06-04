@@ -91,36 +91,48 @@ const commands = [
       {
         type: 1, // SUB_COMMAND
         name: 'register',
-        description: 'Get the registration link for the upcoming tournament',
-        options: [tournamentIdOption()],
+        description: 'List tournaments currently open for registration',
       },
       {
         type: 1,
         name: 'announce',
         description: '[Staff] Post a tournament announcement to #notifications',
-        options: [tournamentIdOption()],
+        options: [platformOption(), tournamentIdOption()],
       },
       {
         type: 1,
         name: 'live',
         description: '[Staff] Start live queue and leaderboard updates in #notifications',
-        options: [tournamentIdOption()],
+        options: [platformOption(), tournamentIdOption()],
       },
       {
         type: 1,
         name: 'end',
         description: '[Staff] End live updates and post final results',
-        options: [tournamentIdOption()],
+        options: [platformOption(), tournamentIdOption()],
       },
     ],
   },
 ];
 
+function platformOption() {
+  return {
+    type: 3, // STRING
+    name: 'platform',
+    description: 'Tournament platform (default: matchplay)',
+    required: false,
+    choices: [
+      { name: 'MatchPlay', value: 'matchplay' },
+      { name: 'Challonge', value: 'challonge' },
+    ],
+  };
+}
+
 function tournamentIdOption() {
   return {
     type: 3, // STRING
     name: 'tournament-id',
-    description: 'MatchPlay tournament ID (defaults to the currently configured tournament)',
+    description: 'Tournament ID (defaults to the currently configured tournament for the platform)',
     required: false,
   };
 }

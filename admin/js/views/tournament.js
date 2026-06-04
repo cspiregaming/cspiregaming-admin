@@ -1,6 +1,10 @@
 import { api } from '../api.js';
 import { escHtml } from '../app.js';
 
+const PLATFORMS = ['matchplay', 'challonge'];
+const PLATFORM_LABEL = { matchplay: 'MatchPlay', challonge: 'Challonge' };
+const PLATFORM_COLOR = { matchplay: 'var(--blue)', challonge: '#f5a623' };
+
 export async function renderTournament(container) {
   container.innerHTML = '<div class="loading">Loading…</div>';
 
@@ -13,180 +17,209 @@ export async function renderTournament(container) {
   }
 
   function render() {
-    const { defaultTournamentId, defaultRegistrationUrl, apiKeyConfigured, notificationsChannelId, tournaments } = data;
-
-    const activeTournaments = tournaments.filter(t => t.active);
-    const inactiveTournaments = tournaments.filter(t => !t.active);
+    const { apiKeys, defaults, notificationsChannelId, tournaments } = data;
+    const active = tournaments.filter(t => t.active);
+    const inactive = tournaments.filter(t => !t.active);
 
     container.innerHTML = `
       <div class="card__header">
         <h1>Tournament</h1>
       </div>
       <p style="color:var(--text-muted);margin-bottom:20px">
-        Manage MatchPlay Events tournaments. Use <strong>/tournament</strong> Discord slash commands or the controls below to announce, start live updates, and post final results.
+        Manage tournaments across MatchPlay and Challonge. Staff can also use <strong>/tournament</strong> Discord slash commands.
       </p>
 
-      ${!apiKeyConfigured ? `
-        <div class="alert alert-error" style="margin-bottom:16px">
-          MatchPlay API key is not configured. Run <code>wrangler secret put MATCHPLAY_API_KEY</code> and redeploy.
-        </div>
-      ` : ''}
+      ${renderConfigCard(apiKeys, defaults, notificationsChannelId)}
+      ${renderAddCard(apiKeys, defaults)}
 
-      <div class="card" style="margin-bottom:16px">
-        <h2 style="margin-top:0">Configuration</h2>
-        <table class="kv-table">
-          <tr><th>API key</th><td>${renderKeyBadge(apiKeyConfigured)}</td></tr>
-          <tr><th>Default tournament</th><td>${defaultTournamentId
-            ? `<a href="https://app.matchplay.events/tournaments/${escHtml(defaultTournamentId)}" target="_blank" rel="noopener">${escHtml(defaultTournamentId)}</a>`
-            : '<em style="color:var(--text-muted)">not set — MATCHPLAY_TOURNAMENT_ID missing</em>'}</td></tr>
-          <tr><th>Registration URL</th><td>${defaultRegistrationUrl
-            ? `<a href="${escHtml(defaultRegistrationUrl)}" target="_blank" rel="noopener">${escHtml(defaultRegistrationUrl)}</a>`
-            : '<em style="color:var(--text-muted)">not set</em>'}</td></tr>
-          <tr><th>Notifications channel</th><td>${notificationsChannelId
-            ? `<code>#${escHtml(notificationsChannelId)}</code>`
-            : '<em style="color:var(--text-muted)">TOURNAMENT_NOTIFICATIONS_CHANNEL_ID missing</em>'}</td></tr>
-        </table>
-      </div>
-
-      ${defaultTournamentId ? `
+      ${active.length ? `
         <div class="card" style="margin-bottom:16px">
-          <h2 style="margin-top:0">Quick Actions — Default Tournament <code>${escHtml(defaultTournamentId)}</code></h2>
-          <p style="color:var(--text-muted);font-size:13px;margin-bottom:16px">
-            These actions target the currently configured default tournament. To manage a different tournament, use the slash command with a <code>tournament-id</code> argument.
-          </p>
-          <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn-outline" id="btn-announce" ${apiKeyConfigured ? '' : 'disabled'}>📋 Announce</button>
-            <button class="btn btn-primary" id="btn-live" ${apiKeyConfigured ? '' : 'disabled'}>▶ Start Live</button>
-            <button class="btn btn-danger" id="btn-end" ${apiKeyConfigured ? '' : 'disabled'}>■ End Tournament</button>
-          </div>
-          <div id="action-feedback" style="margin-top:12px"></div>
+          <h2 style="margin-top:0">Active (${active.length})</h2>
+          ${active.map(t => renderTournamentCard(t)).join('')}
         </div>
       ` : ''}
 
-      ${activeTournaments.length > 0 ? `
+      ${inactive.length ? `
         <div class="card" style="margin-bottom:16px">
-          <h2 style="margin-top:0">Active Tournaments</h2>
-          ${activeTournaments.map(t => renderTournamentCard(t, true)).join('')}
+          <h2 style="margin-top:0">Past (${inactive.length})</h2>
+          ${inactive.map(t => renderTournamentCard(t)).join('')}
         </div>
       ` : ''}
 
-      ${inactiveTournaments.length > 0 ? `
-        <div class="card" style="margin-bottom:16px">
-          <h2 style="margin-top:0">Inactive Tournaments</h2>
-          ${inactiveTournaments.map(t => renderTournamentCard(t, false)).join('')}
-        </div>
-      ` : ''}
-
-      ${tournaments.length === 0 ? `
+      ${!active.length && !inactive.length ? `
         <div class="alert" style="background:rgba(255,255,255,.05);margin-bottom:16px">
-          No tournaments configured yet. Use <strong>/tournament live</strong> in Discord or click <strong>Start Live</strong> above.
+          No tournaments configured yet. Use the form above to announce or start live updates.
         </div>
       ` : ''}
+
+      <div id="tournament-feedback"></div>
     `;
 
-    if (defaultTournamentId) {
-      document.getElementById('btn-announce')?.addEventListener('click', () =>
-        runAction('announce', defaultTournamentId, '📋 Announcing…'));
-      document.getElementById('btn-live')?.addEventListener('click', () =>
-        runAction('live', defaultTournamentId, '▶ Starting…'));
-      document.getElementById('btn-end')?.addEventListener('click', () => {
-        if (!confirm(`End live updates for tournament ${defaultTournamentId} and post final results?\n\nThis will stop the cron from editing the queue and leaderboard messages.`)) return;
-        runAction('end', defaultTournamentId, '■ Ending…');
-      });
-    }
+    attachListeners();
+  }
 
-    document.querySelectorAll('[data-delete-tournament]').forEach(btn => {
+  function attachListeners() {
+    // Add-tournament form
+    document.getElementById('btn-add-announce')?.addEventListener('click', () => runAddAction('announce'));
+    document.getElementById('btn-add-live')?.addEventListener('click', () => runAddAction('live'));
+
+    // Per-card actions
+    document.querySelectorAll('[data-card-action]').forEach(btn => {
       btn.addEventListener('click', async () => {
-        const id = btn.dataset.deleteTournament;
-        if (!confirm(`Remove the saved state for tournament ${id}?\n\nThis deletes it from the list but does NOT affect any Discord messages already posted.`)) return;
-        btn.disabled = true;
-        try {
-          await api.tournamentDelete(id);
-          data.tournaments = data.tournaments.filter(t => t.tournamentId !== id);
-          render();
-        } catch (err) {
-          btn.disabled = false;
-          showFeedback(`Delete failed: ${err.message}`, 'error');
+        const { cardAction, platform, tournamentId } = btn.dataset;
+        if (cardAction === 'delete') {
+          if (!confirm(`Remove state for ${PLATFORM_LABEL[platform]} tournament ${tournamentId}?\n\nThis removes it from this list but does not affect Discord messages already posted.`)) return;
+          await runCardAction(btn, platform, tournamentId, 'delete');
+        } else if (cardAction === 'end') {
+          if (!confirm(`End live updates for ${PLATFORM_LABEL[platform]} tournament ${tournamentId} and post final results?`)) return;
+          await runCardAction(btn, platform, tournamentId, 'end');
+        } else {
+          await runCardAction(btn, platform, tournamentId, cardAction);
         }
       });
     });
   }
 
-  async function runAction(action, tournamentId, loadingLabel) {
-    const btn = document.getElementById(`btn-${action}`);
+  async function runAddAction(action) {
+    const platform = document.getElementById('add-platform')?.value;
+    const id = document.getElementById('add-tournament-id')?.value?.trim();
+    if (!id) { showFeedback('Enter a tournament ID.', 'error'); return; }
+
+    const btn = document.getElementById(`btn-add-${action}`);
+    await performAction(btn, platform, id, action);
+  }
+
+  async function runCardAction(btn, platform, tournamentId, action) {
+    await performAction(btn, platform, tournamentId, action);
+  }
+
+  async function performAction(btn, platform, tournamentId, action) {
     const original = btn?.textContent;
-    if (btn) { btn.disabled = true; btn.textContent = loadingLabel; }
-    clearFeedback();
+    if (btn) { btn.disabled = true; btn.textContent = '…'; }
+    showFeedback('', '');
 
     const apiCall = {
-      announce: () => api.tournamentAnnounce(tournamentId),
-      live: () => api.tournamentLive(tournamentId),
-      end: () => api.tournamentEnd(tournamentId),
+      announce: () => api.tournamentAnnounce(platform, tournamentId),
+      live: () => api.tournamentLive(platform, tournamentId),
+      end: () => api.tournamentEnd(platform, tournamentId),
+      delete: () => api.tournamentDelete(platform, tournamentId),
     }[action];
+
+    const messages = {
+      announce: '✓ Announcement posted to #notifications.',
+      live: '✓ Live updates started. Queue and leaderboard posted to #notifications.',
+      end: '✓ Live updates stopped. Final results posted to #notifications.',
+      delete: '✓ Tournament state removed.',
+    };
 
     try {
       await apiCall();
-      const messages = {
-        announce: '✓ Announcement posted to #notifications.',
-        live: '✓ Live updates started. Queue and leaderboard posted to #notifications.',
-        end: '✓ Live updates stopped. Final results posted to #notifications.',
-      };
       showFeedback(messages[action], 'success');
-      // Refresh state
       data = await api.getTournaments();
       render();
     } catch (err) {
-      showFeedback(`Failed: ${err.message}`, 'error');
+      showFeedback(`${action} failed: ${err.message}`, 'error');
       if (btn) { btn.disabled = false; btn.textContent = original; }
     }
   }
 
   function showFeedback(message, type) {
-    const el = document.getElementById('action-feedback');
-    if (el) el.innerHTML = `<div class="alert alert-${type === 'success' ? 'success' : 'error'}">${escHtml(message)}</div>`;
-  }
-
-  function clearFeedback() {
-    const el = document.getElementById('action-feedback');
-    if (el) el.innerHTML = '';
+    const el = document.getElementById('tournament-feedback');
+    if (!el || !message) { if (el) el.innerHTML = ''; return; }
+    el.innerHTML = `<div class="alert alert-${type === 'success' ? 'success' : 'error'}" style="margin-top:12px">${escHtml(message)}</div>`;
   }
 
   render();
 }
 
-function renderTournamentCard(t, active) {
-  const statusBadge = active
+// ─── Partials ────────────────────────────────────────────────────────────────
+
+function renderConfigCard(apiKeys, defaults, notificationsChannelId) {
+  const rows = [
+    ...PLATFORMS.map(p => `<tr><th>${escHtml(PLATFORM_LABEL[p])} API key</th><td>${renderKeyBadge(apiKeys[p], p)}</td></tr>`),
+    `<tr><th>MatchPlay default ID</th><td>${defaults.matchplayTournamentId ? `<code>${escHtml(defaults.matchplayTournamentId)}</code>` : '<em style="color:var(--text-muted)">not set</em>'}</td></tr>`,
+    `<tr><th>Challonge default ID</th><td>${defaults.challongeTournamentId ? `<code>${escHtml(defaults.challongeTournamentId)}</code>` : '<em style="color:var(--text-muted)">not set</em>'}</td></tr>`,
+    `<tr><th>MatchPlay organizer ID</th><td>${defaults.matchplayOrganizerId ? `<code>${escHtml(defaults.matchplayOrganizerId)}</code>` : '<em style="color:var(--text-muted)">not set — needed for /tournament register</em>'}</td></tr>`,
+    `<tr><th>Notifications channel</th><td>${notificationsChannelId ? `<code>#${escHtml(notificationsChannelId)}</code>` : '<em style="color:var(--text-muted)">not configured</em>'}</td></tr>`,
+  ].join('');
+
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <h2 style="margin-top:0">Configuration</h2>
+      <table class="kv-table">${rows}</table>
+    </div>
+  `;
+}
+
+function renderAddCard(apiKeys, defaults) {
+  const anyKeyConfigured = apiKeys.matchplay || apiKeys.challonge;
+  return `
+    <div class="card" style="margin-bottom:16px">
+      <h2 style="margin-top:0">Start a Tournament</h2>
+      <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px">
+        Select a platform and enter the tournament ID to announce or start live updates.
+        Leave the ID blank to use the configured default for that platform.
+      </p>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
+        <div>
+          <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px">Platform</label>
+          <select id="add-platform" class="input" style="width:140px">
+            ${PLATFORMS.map(p => `<option value="${p}">${escHtml(PLATFORM_LABEL[p])}</option>`).join('')}
+          </select>
+        </div>
+        <div style="flex:1;min-width:160px">
+          <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px">Tournament ID</label>
+          <input id="add-tournament-id" class="input" placeholder="Leave blank for default" style="width:100%">
+        </div>
+        <button class="btn btn-outline" id="btn-add-announce" ${anyKeyConfigured ? '' : 'disabled'}>📋 Announce</button>
+        <button class="btn btn-primary" id="btn-add-live" ${anyKeyConfigured ? '' : 'disabled'}>▶ Start Live</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderTournamentCard(t) {
+  const platform = t.platform ?? 'matchplay';
+  const label = PLATFORM_LABEL[platform] ?? platform;
+  const color = PLATFORM_COLOR[platform] ?? 'var(--text-muted)';
+  const matchplayUrl = platform === 'matchplay'
+    ? `https://app.matchplay.events/tournaments/${escHtml(t.tournamentId)}`
+    : (t.registrationUrl ?? `https://challonge.com/${escHtml(t.tournamentId)}`);
+
+  const statusBadge = t.active
     ? '<span class="badge badge-green">live</span>'
     : '<span class="badge" style="background:rgba(255,255,255,.1);color:var(--text-muted)">ended</span>';
 
-  const matchplayUrl = `https://app.matchplay.events/tournaments/${escHtml(t.tournamentId)}`;
+  const dataAttrs = `data-platform="${escHtml(platform)}" data-tournament-id="${escHtml(t.tournamentId)}"`;
 
   return `
     <div style="border:1px solid rgba(255,255,255,.1);border-radius:6px;padding:14px;margin-bottom:10px">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap">
         ${statusBadge}
-        <strong>Tournament ${escHtml(t.tournamentId)}</strong>
-        <a href="${matchplayUrl}" target="_blank" rel="noopener" style="font-size:12px;color:var(--text-muted)">↗ MatchPlay</a>
+        <span style="font-size:11px;font-weight:600;color:${color};text-transform:uppercase;letter-spacing:.05em">${escHtml(label)}</span>
+        <strong>${escHtml(t.tournamentId)}</strong>
+        <a href="${escHtml(matchplayUrl)}" target="_blank" rel="noopener" style="font-size:12px;color:var(--text-muted)">↗ View</a>
         <div style="flex:1"></div>
-        <button class="btn btn-ghost" style="font-size:12px;padding:4px 8px" data-delete-tournament="${escHtml(t.tournamentId)}" title="Remove state from KV">Remove</button>
+        ${t.active
+          ? `<button class="btn btn-danger" style="font-size:12px;padding:4px 10px" data-card-action="end" ${dataAttrs}>■ End</button>`
+          : ''}
+        <button class="btn btn-ghost" style="font-size:12px;padding:4px 8px" data-card-action="announce" ${dataAttrs}>📋 Re-announce</button>
+        <button class="btn btn-ghost" style="font-size:12px;padding:4px 8px" data-card-action="delete" ${dataAttrs} title="Remove state from KV">Remove</button>
       </div>
       <table class="kv-table" style="font-size:13px">
         <tr><th>Registration URL</th><td>${t.registrationUrl
           ? `<a href="${escHtml(t.registrationUrl)}" target="_blank" rel="noopener">${escHtml(t.registrationUrl)}</a>`
           : '<em style="color:var(--text-muted)">none</em>'}</td></tr>
-        <tr><th>Queue message ID</th><td>${t.queueMessageId
-          ? `<code>${escHtml(t.queueMessageId)}</code>`
-          : '<em style="color:var(--text-muted)">not posted yet</em>'}</td></tr>
-        <tr><th>Leaderboard message ID</th><td>${t.leaderboardMessageId
-          ? `<code>${escHtml(t.leaderboardMessageId)}</code>`
-          : '<em style="color:var(--text-muted)">not posted yet</em>'}</td></tr>
+        <tr><th>Queue message</th><td>${t.queueMessageId ? `<code>${escHtml(t.queueMessageId)}</code>` : '<em style="color:var(--text-muted)">not posted yet</em>'}</td></tr>
+        <tr><th>Leaderboard message</th><td>${t.leaderboardMessageId ? `<code>${escHtml(t.leaderboardMessageId)}</code>` : '<em style="color:var(--text-muted)">not posted yet</em>'}</td></tr>
       </table>
     </div>
   `;
 }
 
-function renderKeyBadge(configured) {
+function renderKeyBadge(configured, platform) {
+  const secretName = platform === 'challonge' ? 'CHALLONGE_API_KEY' : 'MATCHPLAY_API_KEY';
   return configured
     ? '<span class="badge badge-green">configured</span>'
-    : '<span class="badge" style="background:rgba(224,82,82,.2);color:var(--red)">missing — run <code>wrangler secret put MATCHPLAY_API_KEY</code></span>';
+    : `<span class="badge" style="background:rgba(224,82,82,.2);color:var(--red)">missing — <code>wrangler secret put ${secretName}</code></span>`;
 }

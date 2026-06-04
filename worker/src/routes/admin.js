@@ -9,7 +9,8 @@ import { loadGraderConfig, saveGraderConfig, validateGraderConfig, DEFAULT_GRADE
 import { gradeMessage } from '../games-grader.js';
 import { runDailyStatbotReport, buildDailyReport } from '../statbot-daily.js';
 import { DEFAULT_WELCOME_MESSAGE } from '../welcome.js';
-import { announceTournament, startLiveTournament, endTournament, resolveRegistrationUrl } from '../tournament-actions.js';
+import { announceTournament, startLiveTournament, endTournament } from '../tournament-actions.js';
+import { buildStateKey, VALID_PLATFORMS } from '../tournament-platform.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -712,62 +713,72 @@ function formatCentralNow() {
 // ─── Tournament ──────────────────────────────────────────────────────────────
 
 /**
- * GET  /api/admin/tournament           → { defaultTournamentId, defaultRegistrationUrl,
- *                                         apiKeyConfigured, tournaments: [...states] }
- * POST /api/admin/tournament/:id/announce → post announcement to #notifications
- * POST /api/admin/tournament/:id/live    → start live updates
- * POST /api/admin/tournament/:id/end     → end live updates + post final results
- * DELETE /api/admin/tournament/:id       → remove tournament state from KV
+ * GET  /api/admin/tournament                      → { tournaments, apiKeys, channels }
+ * POST /api/admin/tournament/:platform/:id/announce → post announcement
+ * POST /api/admin/tournament/:platform/:id/live     → start live updates
+ * POST /api/admin/tournament/:platform/:id/end      → end live updates
+ * DELETE /api/admin/tournament/:platform/:id        → remove KV state
  */
 export async function handleAdminTournament(request, env) {
   await requireOfficer(request, env);
 
   const url = new URL(request.url);
-  // path: /api/admin/tournament[/:id[/action]]
-  const parts = url.pathname.split('/').filter(Boolean); // ['api','admin','tournament', id?, action?]
-  const tournamentId = parts[3] || null;
-  const action = parts[4] || null;
+  // path: /api/admin/tournament[/:platform[/:id[/action]]]
+  const parts = url.pathname.split('/').filter(Boolean);
+  // parts: ['api','admin','tournament', platform?, id?, action?]
+  const platform = parts[3] || null;
+  const tournamentId = parts[4] || null;
+  const action = parts[5] || null;
 
-  if (request.method === 'GET' && !tournamentId) {
+  if (request.method === 'GET' && !platform) {
     const list = await env.CONFIG.list({ prefix: 'tournament:state:' }).catch(() => ({ keys: [] }));
     const tournaments = await Promise.all(
       list.keys.map(k => env.CONFIG.get(k.name, 'json').catch(() => null)),
     ).then(states => states.filter(Boolean));
 
     return jsonResponse({
-      defaultTournamentId: env.MATCHPLAY_TOURNAMENT_ID || null,
-      defaultRegistrationUrl: env.MATCHPLAY_REGISTRATION_URL || null,
-      apiKeyConfigured: !!env.MATCHPLAY_API_KEY,
+      apiKeys: {
+        matchplay: !!env.MATCHPLAY_API_KEY,
+        challonge: !!env.CHALLONGE_API_KEY,
+      },
+      defaults: {
+        matchplayTournamentId: env.MATCHPLAY_TOURNAMENT_ID || null,
+        challongeTournamentId: env.CHALLONGE_TOURNAMENT_ID || null,
+        matchplayOrganizerId: env.MATCHPLAY_ORGANIZER_ID || null,
+      },
       notificationsChannelId: env.TOURNAMENT_NOTIFICATIONS_CHANNEL_ID || null,
       tournaments,
     });
   }
 
-  if (!tournamentId) return methodNotAllowed();
+  if (!platform || !VALID_PLATFORMS.includes(platform)) {
+    return jsonResponse({ error: 'Invalid or missing platform. Use matchplay or challonge.' }, 400);
+  }
+  if (!tournamentId) return jsonResponse({ error: 'Missing tournament ID.' }, 400);
 
   if (request.method === 'POST' && action === 'announce') {
-    const result = await announceTournament(env, tournamentId);
+    const result = await announceTournament(env, platform, tournamentId);
     return result.ok
       ? jsonResponse({ ok: true })
       : jsonResponse({ ok: false, error: result.error }, 500);
   }
 
   if (request.method === 'POST' && action === 'live') {
-    const result = await startLiveTournament(env, tournamentId);
+    const result = await startLiveTournament(env, platform, tournamentId);
     return result.ok
       ? jsonResponse({ ok: true })
       : jsonResponse({ ok: false, error: result.error, alreadyActive: result.alreadyActive ?? false }, result.alreadyActive ? 409 : 500);
   }
 
   if (request.method === 'POST' && action === 'end') {
-    const result = await endTournament(env, tournamentId);
+    const result = await endTournament(env, platform, tournamentId);
     return result.ok
       ? jsonResponse({ ok: true })
       : jsonResponse({ ok: false, error: result.error, notRunning: result.notRunning ?? false }, result.notRunning ? 409 : 500);
   }
 
   if (request.method === 'DELETE' && !action) {
-    await env.CONFIG.delete(`tournament:state:${tournamentId}`);
+    await env.CONFIG.delete(buildStateKey(platform, tournamentId));
     return jsonResponse({ ok: true });
   }
 

@@ -64,18 +64,23 @@ BOT_COMMANDS_CHANNEL_ID = "379714158016462850"
 # Defaults to https://api.cspiregaming.com.
 # WORKER_ORIGIN = "https://api.cspiregaming.com"
 
-# ── Tournament / MatchPlay integration ───────────────────────────────────────
-# Private Discord channels in the "tournament" category.
+# ── Tournament integration (MatchPlay + Challonge) ───────────────────────────
+# Discord channels in the "tournament" category.
 TOURNAMENT_ADMIN_CHANNEL_ID         = "1400291523924590693"
 TOURNAMENT_NOTIFICATIONS_CHANNEL_ID = "1186780848788361371"
 TOURNAMENT_SUPPORT_CHANNEL_ID       = "1400291558238060664"
 # Roles that may run /tournament announce|live|end (either role passes).
 TOURNAMENT_ADMIN_ROLE_ID            = "1400290763459526786"
 TOURNAMENT_STAFF_ROLE_ID            = "1400291100337504358"
-# Active tournament — update these per event.
+# Default tournament IDs used when no tournament-id is passed to a slash command.
 MATCHPLAY_TOURNAMENT_ID             = "255077"
-MATCHPLAY_REGISTRATION_URL          = "https://app.matchplay.events/tournaments/255077"
-# Secret: MATCHPLAY_API_KEY — set via `wrangler secret put MATCHPLAY_API_KEY`
+CHALLONGE_TOURNAMENT_ID             = ""
+# MatchPlay organizer ID — used by /tournament register to find open tournaments.
+# Find it in the MatchPlay URL when viewing your organizer profile.
+MATCHPLAY_ORGANIZER_ID              = ""
+# Secrets (set via `wrangler secret put <KEY>`):
+#   MATCHPLAY_API_KEY   — MatchPlay API key
+#   CHALLONGE_API_KEY   — Challonge API key
 
 routes = [
   { pattern = "api.cspiregaming.com", custom_domain = true },

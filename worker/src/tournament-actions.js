@@ -1,39 +1,25 @@
 /**
- * Core tournament action functions shared between the slash-command interaction
- * handlers and the admin API routes. Each returns { ok, error? } plus any
- * relevant output — callers translate to Discord responses or HTTP responses.
+ * Core tournament action functions shared between slash-command handlers and
+ * admin API routes. Each takes (env, platform, tournamentId) and returns
+ * { ok, error? } — callers translate to Discord responses or HTTP responses.
+ *
+ * KV key format: tournament:state:{platform}:{tournamentId}
  */
 
-import { getTournament, getStandings, getActiveGames } from './matchplay.js';
-import {
-  buildMaps,
-  buildAnnouncementEmbed,
-  buildQueueEmbed,
-  buildLeaderboardEmbed,
-  tournamentName,
-} from './tournament.js';
+import { fetchTournamentPayloads, buildStateKey } from './tournament-platform.js';
 import { postChannelMessage } from './discord-outbound.js';
-
-export function resolveRegistrationUrl(env, tournamentId) {
-  if (tournamentId === env.MATCHPLAY_TOURNAMENT_ID && env.MATCHPLAY_REGISTRATION_URL) {
-    return env.MATCHPLAY_REGISTRATION_URL;
-  }
-  return `https://app.matchplay.events/tournaments/${tournamentId}`;
-}
 
 /**
  * Post a registration announcement embed to #notifications.
- * Returns { ok, error? }
  */
-export async function announceTournament(env, tournamentId) {
+export async function announceTournament(env, platform, tournamentId) {
   const channelId = env.TOURNAMENT_NOTIFICATIONS_CHANNEL_ID;
   if (!channelId) return { ok: false, error: 'TOURNAMENT_NOTIFICATIONS_CHANNEL_ID not configured.' };
 
-  const tournament = await getTournament(env, tournamentId);
-  if (!tournament) return { ok: false, error: 'Couldn\'t reach MatchPlay. Check MATCHPLAY_API_KEY or try again.' };
+  const payloads = await fetchTournamentPayloads(env, platform, tournamentId);
+  if (!payloads) return { ok: false, error: `Couldn't reach ${platform}. Check the API key or try again.` };
 
-  const registrationUrl = resolveRegistrationUrl(env, tournamentId);
-  const payload = buildAnnouncementEmbed(tournament, registrationUrl);
+  const payload = payloads.buildAnnouncement(payloads.registrationUrl);
   const post = await postChannelMessage(env, channelId, payload);
   if (!post.ok) return { ok: false, error: `Couldn't post announcement (HTTP ${post.status}).` };
 
@@ -41,42 +27,36 @@ export async function announceTournament(env, tournamentId) {
 }
 
 /**
- * Start live queue + leaderboard updates for a tournament:
+ * Start live queue + leaderboard updates:
  *   - Validates the tournament isn't already active.
- *   - Fetches data from MatchPlay.
+ *   - Fetches data from the platform API.
  *   - Posts initial queue + leaderboard messages to #notifications.
- *   - Saves state to CONFIG KV at key `tournament:state:{tournamentId}`.
- *
- * Returns { ok, error?, alreadyActive? }
+ *   - Saves state to CONFIG KV.
  */
-export async function startLiveTournament(env, tournamentId) {
+export async function startLiveTournament(env, platform, tournamentId) {
   const channelId = env.TOURNAMENT_NOTIFICATIONS_CHANNEL_ID;
   if (!channelId) return { ok: false, error: 'TOURNAMENT_NOTIFICATIONS_CHANNEL_ID not configured.' };
 
-  const stateKey = `tournament:state:${tournamentId}`;
+  const stateKey = buildStateKey(platform, tournamentId);
   const existing = await env.CONFIG.get(stateKey, 'json').catch(() => null);
-  if (existing?.active) return { ok: false, alreadyActive: true, error: `Tournament ${tournamentId} already has live updates running.` };
+  if (existing?.active) {
+    return { ok: false, alreadyActive: true, error: `${platform}:${tournamentId} already has live updates running.` };
+  }
 
-  const [tournament, standings, games] = await Promise.all([
-    getTournament(env, tournamentId),
-    getStandings(env, tournamentId),
-    getActiveGames(env, tournamentId),
-  ]);
-  if (!tournament) return { ok: false, error: 'Couldn\'t reach MatchPlay. Check MATCHPLAY_API_KEY or try again.' };
+  const payloads = await fetchTournamentPayloads(env, platform, tournamentId);
+  if (!payloads) return { ok: false, error: `Couldn't reach ${platform}. Check the API key or try again.` };
 
-  const { playerMap, arenaMap } = buildMaps(tournament);
-  const name = tournamentName(tournament);
-
-  const queuePost = await postChannelMessage(env, channelId, buildQueueEmbed(games, playerMap, arenaMap));
-  const lbPost = await postChannelMessage(env, channelId, buildLeaderboardEmbed(standings, playerMap, name));
+  const queuePost = await postChannelMessage(env, channelId, payloads.queuePayload);
+  const lbPost = await postChannelMessage(env, channelId, payloads.buildLeaderboard());
 
   const state = {
+    platform,
     tournamentId,
-    registrationUrl: resolveRegistrationUrl(env, tournamentId),
+    registrationUrl: payloads.registrationUrl,
     active: true,
     queueMessageId: queuePost.ok ? (queuePost.json?.id ?? null) : null,
     leaderboardMessageId: lbPost.ok ? (lbPost.json?.id ?? null) : null,
-    standingsHash: standings ? JSON.stringify(standings) : null,
+    standingsHash: payloads.standings ? JSON.stringify(payloads.standings) : null,
   };
   await env.CONFIG.put(stateKey, JSON.stringify(state));
 
@@ -85,29 +65,23 @@ export async function startLiveTournament(env, tournamentId) {
 
 /**
  * End live updates for a tournament:
- *   - Fetches final standings from MatchPlay.
+ *   - Fetches final standings from the platform API.
  *   - Posts a "Final Results" embed to #notifications.
  *   - Sets active: false in CONFIG KV.
- *
- * Returns { ok, error?, notRunning? }
  */
-export async function endTournament(env, tournamentId) {
+export async function endTournament(env, platform, tournamentId) {
   const channelId = env.TOURNAMENT_NOTIFICATIONS_CHANNEL_ID;
-  const stateKey = `tournament:state:${tournamentId}`;
+  const stateKey = buildStateKey(platform, tournamentId);
 
   const state = await env.CONFIG.get(stateKey, 'json').catch(() => null);
-  if (!state?.active) return { ok: false, notRunning: true, error: `Tournament ${tournamentId} doesn't have live updates running.` };
+  if (!state?.active) {
+    return { ok: false, notRunning: true, error: `${platform}:${tournamentId} doesn't have live updates running.` };
+  }
 
-  const [tournament, standings] = await Promise.all([
-    getTournament(env, tournamentId),
-    getStandings(env, tournamentId),
-  ]);
-
-  if (standings && channelId) {
-    const { playerMap } = tournament ? buildMaps(tournament) : { playerMap: {} };
-    const name = tournament ? tournamentName(tournament) : `Tournament ${tournamentId}`;
-    const finalPayload = buildLeaderboardEmbed(standings, playerMap, name);
-    finalPayload.embeds[0].title = `🏆 Final Results — ${name}`;
+  const payloads = await fetchTournamentPayloads(env, platform, tournamentId);
+  if (payloads && channelId) {
+    const finalPayload = payloads.buildLeaderboard();
+    finalPayload.embeds[0].title = `🏆 Final Results — ${payloads.name}`;
     finalPayload.embeds[0].footer = { text: 'Tournament complete' };
     await postChannelMessage(env, channelId, finalPayload);
   }

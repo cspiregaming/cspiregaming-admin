@@ -1,11 +1,10 @@
 /**
- * Tournament cron job — polls MatchPlay every minute while a tournament is
- * active and live-edits the queue and leaderboard messages in #notifications.
- * Supports multiple simultaneous active tournaments via per-tournament KV keys.
+ * Tournament cron job — polls active tournaments every minute and live-edits
+ * the queue and leaderboard messages in #notifications.
+ * Supports multiple simultaneous tournaments across multiple platforms.
  */
 
-import { getTournament, getStandings, getActiveGames } from './matchplay.js';
-import { buildMaps, buildQueueEmbed, buildLeaderboardEmbed, tournamentName } from './tournament.js';
+import { fetchTournamentPayloads, parseStateKey } from './tournament-platform.js';
 import { postChannelMessage, editChannelMessage } from './discord-outbound.js';
 
 export async function runTournamentCron(env) {
@@ -35,37 +34,33 @@ async function updateTournament(env, stateKey, channelId) {
   }
   if (!state?.active) return;
 
+  // Derive platform from KV key (tournament:state:{platform}:{id}); fall back
+  // to state.platform for keys written by the current version.
+  const parsed = parseStateKey(stateKey);
+  const platform = state.platform ?? parsed?.platform ?? 'matchplay';
   const { tournamentId } = state;
 
-  const [tournament, standings, games] = await Promise.all([
-    getTournament(env, tournamentId),
-    getStandings(env, tournamentId),
-    getActiveGames(env, tournamentId),
-  ]);
-
-  if (!tournament) {
-    console.error(`tournament-cron: failed to fetch tournament ${tournamentId}`);
+  const payloads = await fetchTournamentPayloads(env, platform, tournamentId);
+  if (!payloads) {
+    console.error(`tournament-cron: failed to fetch ${platform}:${tournamentId}`);
     return;
   }
 
-  const { playerMap, arenaMap } = buildMaps(tournament);
-  const name = tournamentName(tournament);
   let newState = { ...state };
 
-  // Queue message (always update — active games change frequently)
-  const queuePayload = buildQueueEmbed(games, playerMap, arenaMap);
+  // Queue message — always update, active games change every round.
   if (state.queueMessageId) {
-    await editChannelMessage(env, channelId, state.queueMessageId, queuePayload);
+    await editChannelMessage(env, channelId, state.queueMessageId, payloads.queuePayload);
   } else {
-    const posted = await postChannelMessage(env, channelId, queuePayload);
+    const posted = await postChannelMessage(env, channelId, payloads.queuePayload);
     if (posted.ok && posted.json?.id) newState.queueMessageId = posted.json.id;
   }
 
-  // Leaderboard (skip edit if standings unchanged to avoid rate-limit churn)
-  if (standings) {
-    const standingsHash = JSON.stringify(standings);
+  // Leaderboard — skip edit if standings are unchanged to avoid rate-limit churn.
+  if (payloads.standings) {
+    const standingsHash = JSON.stringify(payloads.standings);
     if (standingsHash !== state.standingsHash) {
-      const lbPayload = buildLeaderboardEmbed(standings, playerMap, name);
+      const lbPayload = payloads.buildLeaderboard();
       if (state.leaderboardMessageId) {
         await editChannelMessage(env, channelId, state.leaderboardMessageId, lbPayload);
       } else {
@@ -76,7 +71,6 @@ async function updateTournament(env, stateKey, channelId) {
     }
   }
 
-  // Persist only if something changed
   if (JSON.stringify(newState) !== JSON.stringify(state)) {
     await env.CONFIG.put(stateKey, JSON.stringify(newState));
   }
