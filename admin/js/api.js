@@ -127,6 +127,13 @@ export const api = {
   getWelcomeConfig: () => apiFetch('/api/admin/welcome'),
   updateWelcomeConfig: data => apiFetch('/api/admin/welcome', { method: 'PUT', body: JSON.stringify(data) }),
 
+  // Tournament / MatchPlay
+  getTournaments: () => apiFetch('/api/admin/tournament'),
+  tournamentAnnounce: id => apiFetch(`/api/admin/tournament/${encodeURIComponent(id)}/announce`, { method: 'POST' }),
+  tournamentLive: id => apiFetch(`/api/admin/tournament/${encodeURIComponent(id)}/live`, { method: 'POST' }),
+  tournamentEnd: id => apiFetch(`/api/admin/tournament/${encodeURIComponent(id)}/end`, { method: 'POST' }),
+  tournamentDelete: id => apiFetch(`/api/admin/tournament/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // Event check-ins
   getActiveEvent: () => apiFetch('/api/admin/checkins/active-event'),
   setActiveEvent: data =>

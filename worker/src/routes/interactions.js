@@ -26,6 +26,13 @@ import {
 import * as streamerRegistry from '../streamers.js';
 import * as memberOptOuts from '../member-opt-outs.js';
 import { buildBombPayload } from '../parrotbomb.js';
+import { isTournamentStaff } from '../tournament.js';
+import {
+  resolveRegistrationUrl,
+  announceTournament,
+  startLiveTournament,
+  endTournament,
+} from '../tournament-actions.js';
 
 export async function handleInteractions(request, env, ctx) {
   if (request.method !== 'POST') {
@@ -116,6 +123,8 @@ async function handleCommand(interaction, env, ctx) {
       return commandStreamerRemove(interaction, env, ctx);
     case 'toggle-public-membership':
       return commandTogglePublicMembership(interaction, env);
+    case 'tournament':
+      return commandTournament(interaction, env, ctx);
     default:
       return ephemeralReply('Unknown command.');
   }
@@ -420,6 +429,83 @@ async function commandParrotBomb(interaction, env, ctx) {
   })());
 
   return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE });
+}
+
+// ─── /tournament ─────────────────────────────────────────────────────────────
+
+async function commandTournament(interaction, env, ctx) {
+  const sub = (interaction.data?.options || [])[0];
+  switch (sub?.name) {
+    case 'register': return commandTournamentRegister(interaction, env, sub);
+    case 'announce': return commandTournamentAnnounce(interaction, env, ctx, sub);
+    case 'live':     return commandTournamentLive(interaction, env, ctx, sub);
+    case 'end':      return commandTournamentEnd(interaction, env, ctx, sub);
+    default:         return ephemeralReply('Unknown tournament subcommand.');
+  }
+}
+
+function getTournamentId(env, sub) {
+  return (sub?.options || []).find(o => o.name === 'tournament-id')?.value
+    || env.MATCHPLAY_TOURNAMENT_ID;
+}
+
+
+async function commandTournamentRegister(interaction, env, sub) {
+  const tournamentId = getTournamentId(env, sub);
+  if (!tournamentId) return ephemeralReply('No tournament is currently configured. Ask a staff member.');
+  const url = resolveRegistrationUrl(env, tournamentId);
+  return ephemeralReply(`📋 Register for the upcoming tournament:\n${url}`);
+}
+
+async function commandTournamentAnnounce(interaction, env, ctx, sub) {
+  if (!isTournamentStaff(interaction, env)) {
+    return ephemeralReply('Only tournament admin or staff can run this command.');
+  }
+  const tournamentId = getTournamentId(env, sub);
+  if (!tournamentId) return ephemeralReply('No tournament configured. Pass a `tournament-id` or set MATCHPLAY_TOURNAMENT_ID.');
+  ctx.waitUntil(announceTournamentPipeline(interaction, env, tournamentId));
+  return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE, data: { flags: FLAGS.EPHEMERAL } });
+}
+
+async function announceTournamentPipeline(interaction, env, tournamentId) {
+  const result = await announceTournament(env, tournamentId);
+  return editOriginal(interaction, env, result.ok
+    ? '✓ Announcement posted to #notifications.'
+    : `⚠️ ${result.error}`);
+}
+
+async function commandTournamentLive(interaction, env, ctx, sub) {
+  if (!isTournamentStaff(interaction, env)) {
+    return ephemeralReply('Only tournament admin or staff can run this command.');
+  }
+  const tournamentId = getTournamentId(env, sub);
+  if (!tournamentId) return ephemeralReply('No tournament configured. Pass a `tournament-id` or set MATCHPLAY_TOURNAMENT_ID.');
+  ctx.waitUntil(startLivePipeline(interaction, env, tournamentId));
+  return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE, data: { flags: FLAGS.EPHEMERAL } });
+}
+
+async function startLivePipeline(interaction, env, tournamentId) {
+  const result = await startLiveTournament(env, tournamentId);
+  return editOriginal(interaction, env, result.ok
+    ? `✓ Live updates started for tournament ${tournamentId}. Queue and leaderboard are live in <#${result.channelId}>.`
+    : `⚠️ ${result.error}`);
+}
+
+async function commandTournamentEnd(interaction, env, ctx, sub) {
+  if (!isTournamentStaff(interaction, env)) {
+    return ephemeralReply('Only tournament admin or staff can run this command.');
+  }
+  const tournamentId = getTournamentId(env, sub);
+  if (!tournamentId) return ephemeralReply('No tournament configured. Pass a `tournament-id` or set MATCHPLAY_TOURNAMENT_ID.');
+  ctx.waitUntil(endTournamentPipeline(interaction, env, tournamentId));
+  return jsonResponse({ type: RESPONSE_TYPE.DEFERRED_CHANNEL_MESSAGE, data: { flags: FLAGS.EPHEMERAL } });
+}
+
+async function endTournamentPipeline(interaction, env, tournamentId) {
+  const result = await endTournament(env, tournamentId);
+  return editOriginal(interaction, env, result.ok
+    ? `✓ Live updates stopped for tournament ${tournamentId}. Final results posted.`
+    : `⚠️ ${result.error}`);
 }
 
 // ─── Button click ────────────────────────────────────────────────────────────

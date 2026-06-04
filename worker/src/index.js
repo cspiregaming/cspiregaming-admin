@@ -16,6 +16,7 @@ import {
   handleAdminEmojis,
   handleAdminStatbot,
   handleAdminWelcome,
+  handleAdminTournament,
 } from './routes/admin.js';
 import { handleInteractions } from './routes/interactions.js';
 import {
@@ -30,6 +31,7 @@ import {
 } from './routes/checkins.js';
 import { runDailyGamesGrader } from './games-grader-scheduler.js';
 import { maybeRunDailyStatbotReport } from './statbot-daily.js';
+import { runTournamentCron } from './tournament-scheduler.js';
 import { maybeWelcomeNewMembers } from './welcome.js';
 
 const ALLOWED_ORIGINS = [
@@ -48,6 +50,7 @@ export default {
     ctx.waitUntil(runDailyGamesGrader(env));
     ctx.waitUntil(maybeRunDailyStatbotReport(env));
     ctx.waitUntil(maybeWelcomeNewMembers(env));
+    ctx.waitUntil(runTournamentCron(env));
   },
 
   async fetch(request, env, ctx) {
@@ -118,6 +121,7 @@ async function route(request, env, ctx) {
   if (path === '/api/admin/emojis') return handleAdminEmojis(request, env);
   if (path.startsWith('/api/admin/statbot/')) return handleAdminStatbot(request, env);
   if (path.startsWith('/api/admin/welcome')) return handleAdminWelcome(request, env);
+  if (path.startsWith('/api/admin/tournament')) return handleAdminTournament(request, env);
   if (path === '/api/admin/checkins/active-event') return handleAdminActiveEvent(request, env);
   if (path === '/api/admin/checkins/event-candidates') return handleAdminEventCandidates(request, env);
   if (path === '/api/admin/checkins') return handleAdminCheckins(request, env);

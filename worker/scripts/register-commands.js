@@ -83,7 +83,47 @@ const commands = [
       },
     ],
   },
+  {
+    name: 'tournament',
+    description: 'C Spire Gaming tournament commands',
+    dm_permission: false,
+    options: [
+      {
+        type: 1, // SUB_COMMAND
+        name: 'register',
+        description: 'Get the registration link for the upcoming tournament',
+        options: [tournamentIdOption()],
+      },
+      {
+        type: 1,
+        name: 'announce',
+        description: '[Staff] Post a tournament announcement to #notifications',
+        options: [tournamentIdOption()],
+      },
+      {
+        type: 1,
+        name: 'live',
+        description: '[Staff] Start live queue and leaderboard updates in #notifications',
+        options: [tournamentIdOption()],
+      },
+      {
+        type: 1,
+        name: 'end',
+        description: '[Staff] End live updates and post final results',
+        options: [tournamentIdOption()],
+      },
+    ],
+  },
 ];
+
+function tournamentIdOption() {
+  return {
+    type: 3, // STRING
+    name: 'tournament-id',
+    description: 'MatchPlay tournament ID (defaults to the currently configured tournament)',
+    required: false,
+  };
+}
 
 const url = `https://discord.com/api/v10/applications/${DISCORD_APP_ID}/guilds/${GUILD_ID}/commands`;
 
