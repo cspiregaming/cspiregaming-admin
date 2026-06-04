@@ -39,14 +39,15 @@ export function buildAnnouncementEmbed(tournament, registrationUrl) {
   return {
     embeds: [{
       title: `📋 ${name}`,
-      description: 'Registration is now open for our upcoming tournament! Sign up on MatchPlay Events to reserve your spot.',
+      description: 'Registration is now open for our upcoming tournament! Click the button below to sign up.',
       color: 0x5865f2,
       footer: { text: 'C Spire Gaming' },
     }],
     components: [{
-      type: 1,
+      type: 1, // Action Row
       components: [{
-        type: 5, // LINK button
+        type: 2,  // Button
+        style: 5, // Link
         label: 'Register Now',
         url: registrationUrl,
       }],
