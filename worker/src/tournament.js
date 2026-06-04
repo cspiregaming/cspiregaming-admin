@@ -34,13 +34,25 @@ export function tournamentName(tournament) {
 
 // ─── Embed builders ──────────────────────────────────────────────────────────
 
-export function buildAnnouncementEmbed(tournament, registrationUrl) {
+export function buildAnnouncementEmbed(tournament, registrationUrl, { platform, game, startTime } = {}) {
   const name = tournamentName(tournament);
+
+  const fields = [];
+  if (platform) fields.push({ name: 'Platform', value: platform, inline: true });
+  if (game) fields.push({ name: 'Game', value: game, inline: true });
+  if (startTime) {
+    const unix = Math.floor(new Date(startTime).getTime() / 1000);
+    if (!isNaN(unix)) {
+      fields.push({ name: 'Starts', value: `<t:${unix}:f>\n<t:${unix}:R>`, inline: false });
+    }
+  }
+
   return {
     embeds: [{
       title: `📋 ${name}`,
       description: 'Registration is now open for our upcoming tournament! Click the button below to sign up.',
       color: 0x5865f2,
+      fields: fields.length > 0 ? fields : undefined,
       footer: { text: 'C Spire Gaming' },
     }],
     components: [{

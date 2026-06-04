@@ -66,6 +66,8 @@ export function normalizeTournament(raw) {
     state: t.state,
     registrationOpen: t.state === 'pending' || t.state === 'checking_in',
     url: t.full_challonge_url ?? `https://challonge.com/${t.url ?? t.id}`,
+    game: t.game_name ?? null,
+    startTime: t.start_at ?? null,
   };
 }
 

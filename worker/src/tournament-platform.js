@@ -47,13 +47,20 @@ async function fetchMatchPlayPayloads(env, tournamentId) {
   const name = mpTournamentName(tournament);
   const registrationUrl = `https://app.matchplay.events/tournaments/${tournamentId}`;
 
+  const mpData = tournament?.data ?? tournament;
+  const startTime = mpData?.startTime ?? mpData?.start_time ?? null;
+
   return {
     name,
     registrationUrl,
     queuePayload: buildQueueEmbed(games, playerMap, arenaMap),
     standings,
     buildLeaderboard: () => buildLeaderboardEmbed(standings, playerMap, name),
-    buildAnnouncement: url => buildAnnouncementEmbed(tournament, url),
+    buildAnnouncement: url => buildAnnouncementEmbed(tournament, url, {
+      platform: 'MatchPlay',
+      game: 'Pinball',
+      startTime,
+    }),
   };
 }
 
@@ -77,8 +84,11 @@ async function fetchChallongePayloads(env, tournamentId) {
     queuePayload: buildQueueEmbed(activeMatches, playerMap, {}),
     standings,
     buildLeaderboard: () => buildLeaderboardEmbed(standings, playerMap, t.name),
-    // Pass { name } — buildAnnouncementEmbed only reads .name via tournamentName()
-    buildAnnouncement: url => buildAnnouncementEmbed({ name: t.name }, url),
+    buildAnnouncement: url => buildAnnouncementEmbed({ name: t.name }, url, {
+      platform: 'Challonge',
+      game: t.game ?? null,
+      startTime: t.startTime ?? null,
+    }),
   };
 }
 
