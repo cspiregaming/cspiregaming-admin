@@ -80,9 +80,13 @@ const PLATFORM_COLOR = { matchplay: 'var(--blue)', challonge: '#f5a623' };
 export async function renderTournament(container) {
   container.innerHTML = '<div class="loading">Loading…</div>';
 
-  let data, organizerIds;
+  let data, organizerIds, discovered;
   try {
-    [data, organizerIds] = await Promise.all([api.getTournaments(), loadOrganizers()]);
+    [data, organizerIds, discovered] = await Promise.all([
+      api.getTournaments(),
+      loadOrganizers(),
+      api.discoverTournaments().then(r => r.tournaments ?? []).catch(() => []),
+    ]);
   } catch (err) {
     container.innerHTML = `<div class="alert alert-error">Failed to load: ${escHtml(err.message)}</div>`;
     return;
@@ -103,7 +107,7 @@ export async function renderTournament(container) {
 
       ${renderConfigCard(apiKeys, defaults, notificationsChannelId)}
       ${renderOrganizersCard(organizerIds)}
-      ${renderAddCard(apiKeys, defaults)}
+      ${renderAddCard(apiKeys, discovered)}
 
       ${active.length ? `
         <div class="card" style="margin-bottom:16px">
@@ -139,6 +143,16 @@ export async function renderTournament(container) {
       if (card) {
         card.outerHTML = renderOrganizersCard(organizerIds);
         attachOrganizerListeners(ids2 => { organizerIds = ids2; });
+      }
+    });
+
+    // Swap tournament selector when platform changes
+    document.getElementById('add-platform')?.addEventListener('change', e => {
+      const wrapper = document.getElementById('add-tournament-wrapper');
+      if (wrapper) {
+        const label = wrapper.querySelector('label');
+        const selector = buildTournamentSelector(e.target.value, discovered);
+        wrapper.innerHTML = (label?.outerHTML ?? '<label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px">Tournament</label>') + selector;
       }
     });
 
@@ -234,14 +248,29 @@ function renderConfigCard(apiKeys, defaults, notificationsChannelId) {
   `;
 }
 
-function renderAddCard(apiKeys, defaults) {
+// Build a tournament selector (dropdown or text input) for a given platform.
+// Exported at module scope so attachListeners can call it when the platform changes.
+function buildTournamentSelector(platform, discovered) {
+  const list = (discovered ?? []).filter(t => t.platform === platform);
+  if (!list.length) {
+    return `<input id="add-tournament-id" class="input" placeholder="Tournament ID (leave blank for default)" style="width:100%">`;
+  }
+  const options = list.map(t =>
+    `<option value="${escHtml(t.id)}">${escHtml(t.name)} (${escHtml(t.id)})</option>`,
+  ).join('');
+  return `<select id="add-tournament-id" class="input" style="width:100%">${options}</select>`;
+}
+
+function renderAddCard(apiKeys, discovered) {
   const anyKeyConfigured = apiKeys.matchplay || apiKeys.challonge;
+  const hasAny = (discovered ?? []).length > 0;
   return `
     <div class="card" style="margin-bottom:16px">
       <h2 style="margin-top:0">Start a Tournament</h2>
       <p style="color:var(--text-muted);font-size:13px;margin-bottom:14px">
-        Select a platform and enter the tournament ID to announce or start live updates.
-        Leave the ID blank to use the configured default for that platform.
+        ${hasAny
+          ? 'Select a platform and tournament, then announce or start live updates.'
+          : 'No open-registration tournaments found right now — enter an ID manually.'}
       </p>
       <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end">
         <div>
@@ -250,9 +279,9 @@ function renderAddCard(apiKeys, defaults) {
             ${PLATFORMS.map(p => `<option value="${p}">${escHtml(PLATFORM_LABEL[p])}</option>`).join('')}
           </select>
         </div>
-        <div style="flex:1;min-width:160px">
-          <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px">Tournament ID</label>
-          <input id="add-tournament-id" class="input" placeholder="Leave blank for default" style="width:100%">
+        <div style="flex:1;min-width:200px" id="add-tournament-wrapper">
+          <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px">Tournament</label>
+          ${buildTournamentSelector('matchplay', discovered)}
         </div>
         <button class="btn btn-outline" id="btn-add-announce" ${anyKeyConfigured ? '' : 'disabled'}>📋 Announce</button>
         <button class="btn btn-primary" id="btn-add-live" ${anyKeyConfigured ? '' : 'disabled'}>▶ Start Live</button>

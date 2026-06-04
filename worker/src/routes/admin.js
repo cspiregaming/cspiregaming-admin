@@ -10,7 +10,7 @@ import { gradeMessage } from '../games-grader.js';
 import { runDailyStatbotReport, buildDailyReport } from '../statbot-daily.js';
 import { DEFAULT_WELCOME_MESSAGE } from '../welcome.js';
 import { announceTournament, startLiveTournament, endTournament } from '../tournament-actions.js';
-import { buildStateKey, VALID_PLATFORMS, getMatchPlayOrganizerIds, MATCHPLAY_ORGANIZERS_KEY } from '../tournament-platform.js';
+import { buildStateKey, VALID_PLATFORMS, getMatchPlayOrganizerIds, MATCHPLAY_ORGANIZERS_KEY, getOpenTournaments } from '../tournament-platform.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -749,6 +749,13 @@ export async function handleAdminTournament(request, env) {
       notificationsChannelId: env.TOURNAMENT_NOTIFICATIONS_CHANNEL_ID || null,
       tournaments,
     });
+  }
+
+  // Discover open tournaments across all configured platforms.
+  if (platform === 'discover') {
+    if (request.method !== 'GET') return methodNotAllowed();
+    const tournaments = await getOpenTournaments(env).catch(() => []);
+    return jsonResponse({ tournaments });
   }
 
   // Organizer management — separate sub-resource, not a platform action.
