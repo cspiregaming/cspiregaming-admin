@@ -4,14 +4,14 @@
  * Public (kiosk):
  *   POST /api/checkin                         → record a visit, return prior visits
  *
- * Admin (officer-gated):
+ * Admin (tournament-staff+):
  *   GET  /api/admin/checkins/active-event     → current snapshot or null
  *   PUT  /api/admin/checkins/active-event     → body { eventId, source }
  *   DEL  /api/admin/checkins/active-event     → clear active event
  *   GET  /api/admin/checkins/event-candidates → { discord, manual }
  *   GET  /api/admin/checkins                  → list (filter by eventId/date/format)
  */
-import { requireOfficer } from '../auth.js';
+import { requireTournamentStaff } from '../auth.js';
 import {
   buildEventSnapshot,
   clearActiveEvent,
@@ -44,7 +44,7 @@ export async function handlePublicCheckIn(request, env) {
 // ─── Admin: active event ────────────────────────────────────────────────────
 
 export async function handleAdminActiveEvent(request, env) {
-  const session = await requireOfficer(request, env);
+  const session = await requireTournamentStaff(request, env);
 
   if (request.method === 'GET') {
     return jsonResponse({ activeEvent: await getActiveEvent(env) });
@@ -88,7 +88,7 @@ export async function handleAdminActiveEvent(request, env) {
  * Same data sources the existing Events admin view already consumes.
  */
 export async function handleAdminEventCandidates(request, env) {
-  await requireOfficer(request, env);
+  await requireTournamentStaff(request, env);
   if (request.method !== 'GET') return methodNotAllowed();
 
   const [{ live, archived }, manualRaw] = await Promise.all([
@@ -127,7 +127,7 @@ function toManualCandidate(ev) {
 // ─── Admin: check-ins list / export ─────────────────────────────────────────
 
 export async function handleAdminCheckins(request, env) {
-  await requireOfficer(request, env);
+  await requireTournamentStaff(request, env);
   if (request.method !== 'GET') return methodNotAllowed();
 
   const url = new URL(request.url);

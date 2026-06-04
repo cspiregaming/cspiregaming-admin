@@ -1,4 +1,4 @@
-import { requireAuth, requireOfficer, requireMod, requireTournamentStaff, getTier, parseRoleList, buildOAuthUrl, signJwt } from '../auth.js';
+import { requireAuth, requireOfficer, requireMod, requireTournamentStaff, requireTournamentAdmin, getTier, parseRoleList, buildOAuthUrl, signJwt } from '../auth.js';
 import { discordOAuthExchange, fetchGuildEmojis, fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 import * as eventPublishRequests from '../event-publish-requests.js';
@@ -260,12 +260,12 @@ export async function handleAdminOfficers(request, env) {
 }
 
 export async function handleAdminEvents(request, env) {
-  const session = await requireOfficer(request, env);
+  const session = await requireTournamentAdmin(request, env);
   return handleCrudCollection(request, env, 'events');
 }
 
 export async function handleAdminDiscordEvents(request, env) {
-  const session = await requireOfficer(request, env);
+  const session = await requireTournamentAdmin(request, env);
   const url = new URL(request.url);
   const pathParts = url.pathname.split('/').filter(Boolean);
   // /api/admin/discord-events            → pathParts[2] === 'discord-events', no id

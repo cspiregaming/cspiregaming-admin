@@ -17,7 +17,7 @@ import { renderTournament } from './views/tournament.js';
 // ─── State ──────────────────────────────────────────────────────
 let currentSection = 'dashboard';
 let sessionUser = null;
-let sessionTier = 'officer'; // 'officer' | 'mod' | 'tournament'
+let sessionTier = 'officer'; // 'officer' | 'mod' | 'tournament-admin' | 'tournament-staff'
 
 export function getSessionTier() { return sessionTier; }
 
@@ -88,9 +88,9 @@ const NAV_ITEMS = [
   { section: 'members',    icon: '👥', label: 'Members',       tiers: ['officer'] },
   { section: 'roles',      icon: '🏷️', label: 'Roles Config',   tiers: ['officer'] },
   { section: 'officers',   icon: '⭐', label: 'Officers',       tiers: ['officer'] },
-  { section: 'events',     icon: '📅', label: 'Events',         tiers: ['officer'] },
-  { section: 'checkins',   icon: '📝', label: 'Check-Ins',      tiers: ['officer'] },
-  { section: 'tournament', icon: '🏆', label: 'Tournament',      tiers: ['officer', 'tournament'] },
+  { section: 'events',     icon: '📅', label: 'Events',         tiers: ['officer', 'tournament-admin'] },
+  { section: 'checkins',   icon: '📝', label: 'Check-Ins',      tiers: ['officer', 'tournament-admin', 'tournament-staff'] },
+  { section: 'tournament', icon: '🏆', label: 'Tournament',      tiers: ['officer', 'tournament-admin', 'tournament-staff'] },
   { section: 'streamers',  icon: '🎮', label: 'Streamers',      tiers: ['officer'] },
   { section: 'grader',     icon: '🎯', label: 'Daily Games',    tiers: ['officer', 'mod'] },
   { section: 'emojis',     icon: '😀', label: 'Custom Emojis',  tiers: ['officer', 'mod'] },
@@ -103,7 +103,7 @@ const NAV_ITEMS = [
 function renderApp() {
   const visibleNav = NAV_ITEMS.filter(item => item.tiers.includes(sessionTier));
   const firstSection = visibleNav[0]?.section || 'grader';
-  const tierLabel = sessionTier === 'officer' ? 'Officer' : sessionTier === 'tournament' ? 'Tournament Staff' : 'Mod';
+  const tierLabel = sessionTier === 'officer' ? 'Officer' : sessionTier === 'tournament-admin' ? 'Tournament Admin' : sessionTier === 'tournament-staff' ? 'Tournament Staff' : 'Mod';
 
   document.body.innerHTML = `
     <div class="app">
@@ -125,7 +125,7 @@ function renderApp() {
         <div class="sidebar__user" id="sidebar-user">
           <span style="color:var(--text-muted);font-size:12px">
             Signed in${sessionUser ? ` · ${escHtml(sessionUser.displayName)}` : ''}
-            <br><span class="badge ${sessionTier === 'officer' ? 'badge-green' : sessionTier === 'tournament' ? 'badge-blue' : 'badge-muted'}" style="margin-top:4px">${tierLabel}</span>
+            <br><span class="badge ${sessionTier === 'officer' ? 'badge-green' : (sessionTier === 'tournament-admin' || sessionTier === 'tournament-staff') ? 'badge-blue' : 'badge-muted'}" style="margin-top:4px">${tierLabel}</span>
           </span>
         </div>
       </nav>

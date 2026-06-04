@@ -73,10 +73,11 @@ export async function requireAuth(request, env) {
 
 /**
  * Compute the access tier of a signed-in user from their JWT payload.
- *  - 'officer'    → has ADMIN_ROLE_ID
- *  - 'mod'        → holds any role listed in MOD_ROLE_IDS (but not ADMIN_ROLE_ID)
- *  - 'tournament' → holds TOURNAMENT_ADMIN_ROLE_ID or TOURNAMENT_STAFF_ROLE_ID only
- *  - null         → none of the above (shouldn't normally happen — sign-in gate rejects)
+ *  - 'officer'          → has ADMIN_ROLE_ID
+ *  - 'mod'              → holds any role listed in MOD_ROLE_IDS (but not ADMIN_ROLE_ID)
+ *  - 'tournament-admin' → holds TOURNAMENT_ADMIN_ROLE_ID only (tournament + check-ins + events)
+ *  - 'tournament-staff' → holds TOURNAMENT_STAFF_ROLE_ID only (tournament + check-ins)
+ *  - null               → none of the above (shouldn't normally happen — sign-in gate rejects)
  *
  * Legacy tokens (issued before we started embedding `roles` in the JWT) were
  * only handed out to ADMIN_ROLE_ID holders, so treat a missing `roles` array
@@ -88,8 +89,8 @@ export function getTier(payload, env) {
   if (adminRoleId && payload.roles.includes(adminRoleId)) return 'officer';
   const modRoleIds = parseRoleList(env.MOD_ROLE_IDS);
   if (modRoleIds.some(r => r !== adminRoleId && payload.roles.includes(r))) return 'mod';
-  const tournamentRoleIds = [env.TOURNAMENT_ADMIN_ROLE_ID, env.TOURNAMENT_STAFF_ROLE_ID].filter(Boolean);
-  if (tournamentRoleIds.some(r => payload.roles.includes(r))) return 'tournament';
+  if (env.TOURNAMENT_ADMIN_ROLE_ID && payload.roles.includes(env.TOURNAMENT_ADMIN_ROLE_ID)) return 'tournament-admin';
+  if (env.TOURNAMENT_STAFF_ROLE_ID && payload.roles.includes(env.TOURNAMENT_STAFF_ROLE_ID)) return 'tournament-staff';
   return null;
 }
 
@@ -106,11 +107,20 @@ export async function requireMod(request, env) {
   throw forbiddenResponse('Officer or mod access required.');
 }
 
+// Grants access to tournament management and check-ins (all tournament roles).
 export async function requireTournamentStaff(request, env) {
   const payload = await requireAuth(request, env);
   const tier = getTier(payload, env);
-  if (tier === 'officer' || tier === 'tournament') return payload;
+  if (tier === 'officer' || tier === 'tournament-admin' || tier === 'tournament-staff') return payload;
   throw forbiddenResponse('Tournament staff access required.');
+}
+
+// Grants access to tournament events (tournament admin and above only).
+export async function requireTournamentAdmin(request, env) {
+  const payload = await requireAuth(request, env);
+  const tier = getTier(payload, env);
+  if (tier === 'officer' || tier === 'tournament-admin') return payload;
+  throw forbiddenResponse('Tournament admin access required.');
 }
 
 export function parseRoleList(commaList) {
