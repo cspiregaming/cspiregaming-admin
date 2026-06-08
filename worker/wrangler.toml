@@ -20,7 +20,7 @@ ADMIN_ROLE_ID = "961330657114607646"
 ENVIRONMENT = "production"
 # URL of the deployed admin SPA. Used as the post-OAuth redirect target so
 # users land on the admin page (not the worker origin) after sign-in.
-ADMIN_URL = "http://cspiregaming.csgitpages.cspire.net/cspiregaming-workers"
+ADMIN_URL = "https://cspiregaming.github.io/cspiregaming-admin"
 # Discord application ID — same value as DISCORD_CLIENT_ID secret, but public.
 # Used by the slash-command registration script.
 DISCORD_APP_ID = "1002285255249625138"
