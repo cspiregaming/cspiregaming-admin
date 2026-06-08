@@ -127,6 +127,7 @@ function renderApp() {
             Signed in${sessionUser ? ` · ${escHtml(sessionUser.displayName)}` : ''}
             <br><span class="badge ${sessionTier === 'officer' ? 'badge-green' : (sessionTier === 'tournament-admin' || sessionTier === 'tournament-staff') ? 'badge-blue' : 'badge-muted'}" style="margin-top:4px">${tierLabel}</span>
           </span>
+          <button class="btn btn-ghost" id="logout-btn" style="font-size:12px;padding:4px 10px">Sign out</button>
         </div>
       </nav>
 
@@ -139,6 +140,12 @@ function renderApp() {
   // Wire nav clicks
   document.querySelectorAll('.nav-item[data-section]').forEach(el => {
     el.addEventListener('click', () => navigateTo(el.dataset.section));
+  });
+
+  // Wire logout
+  document.getElementById('logout-btn').addEventListener('click', async () => {
+    await api.logout().catch(() => {});
+    renderLogin();
   });
 
   navigateTo(firstSection);
