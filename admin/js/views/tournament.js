@@ -107,7 +107,7 @@ export async function renderTournament(container) {
 
       ${renderConfigCard(apiKeys, defaults, notificationsChannelId)}
       ${renderOrganizersCard(organizerIds)}
-      ${renderAddCard(apiKeys, discovered)}
+      ${renderAddCard(apiKeys, discovered, defaults)}
 
       ${active.length ? `
         <div class="card" style="margin-bottom:16px">
@@ -151,7 +151,7 @@ export async function renderTournament(container) {
       const wrapper = document.getElementById('add-tournament-wrapper');
       if (wrapper) {
         const label = wrapper.querySelector('label');
-        const selector = buildTournamentSelector(e.target.value, discovered);
+        const selector = buildTournamentSelector(e.target.value, discovered, defaults);
         wrapper.innerHTML = (label?.outerHTML ?? '<label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px">Tournament</label>') + selector;
       }
     });
@@ -250,10 +250,11 @@ function renderConfigCard(apiKeys, defaults, notificationsChannelId) {
 
 // Build a tournament selector (dropdown or text input) for a given platform.
 // Exported at module scope so attachListeners can call it when the platform changes.
-function buildTournamentSelector(platform, discovered) {
+function buildTournamentSelector(platform, discovered, defaults) {
   const list = (discovered ?? []).filter(t => t.platform === platform);
   if (!list.length) {
-    return `<input id="add-tournament-id" class="input" placeholder="Tournament ID (leave blank for default)" style="width:100%">`;
+    const defaultId = platform === 'challonge' ? (defaults?.challongeTournamentId ?? '') : '';
+    return `<input id="add-tournament-id" class="input" placeholder="Tournament ID (leave blank for default)" style="width:100%"${defaultId ? ` value="${escHtml(defaultId)}"` : ''}>`;
   }
   const options = list.map(t =>
     `<option value="${escHtml(t.id)}">${escHtml(t.name)} (${escHtml(t.id)})</option>`,
@@ -261,7 +262,7 @@ function buildTournamentSelector(platform, discovered) {
   return `<select id="add-tournament-id" class="input" style="width:100%">${options}</select>`;
 }
 
-function renderAddCard(apiKeys, discovered) {
+function renderAddCard(apiKeys, discovered, defaults) {
   const anyKeyConfigured = apiKeys.matchplay || apiKeys.challonge;
   const hasAny = (discovered ?? []).length > 0;
   return `
@@ -281,7 +282,7 @@ function renderAddCard(apiKeys, discovered) {
         </div>
         <div style="flex:1;min-width:200px" id="add-tournament-wrapper">
           <label style="display:block;font-size:12px;color:var(--text-muted);margin-bottom:4px">Tournament</label>
-          ${buildTournamentSelector('matchplay', discovered)}
+          ${buildTournamentSelector('matchplay', discovered, defaults)}
         </div>
         <button class="btn btn-outline" id="btn-add-announce" ${anyKeyConfigured ? '' : 'disabled'}>📋 Announce</button>
         <button class="btn btn-primary" id="btn-add-live" ${anyKeyConfigured ? '' : 'disabled'}>▶ Start Live</button>

@@ -74,7 +74,7 @@ TOURNAMENT_ADMIN_ROLE_ID            = "1400290763459526786"
 TOURNAMENT_STAFF_ROLE_ID            = "1400291100337504358"
 # Default tournament IDs — used when no tournament-id is passed to a slash command.
 MATCHPLAY_TOURNAMENT_ID             = "255077"
-CHALLONGE_TOURNAMENT_ID             = ""
+CHALLONGE_TOURNAMENT_ID             = "94497"
 # Challonge community subdomain for cspiregaming.challonge.com tournaments.
 CHALLONGE_SUBDOMAIN                 = "cspiregaming"
 # Bootstrap MatchPlay organizer ID — used when the KV organizer list is empty.
