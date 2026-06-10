@@ -103,6 +103,8 @@ const NAV_ITEMS = [
 function renderApp() {
   const visibleNav = NAV_ITEMS.filter(item => item.tiers.includes(sessionTier));
   const firstSection = visibleNav[0]?.section || 'grader';
+  const hashSection = location.hash.slice(1);
+  const initialSection = visibleNav.some(n => n.section === hashSection) ? hashSection : firstSection;
   const tierLabel = sessionTier === 'officer' ? 'Officer' : sessionTier === 'tournament-admin' ? 'Tournament Admin' : sessionTier === 'tournament-staff' ? 'Tournament Staff' : 'Mod';
 
   document.body.innerHTML = `
@@ -113,8 +115,8 @@ function renderApp() {
           <span>CSG Admin</span>
         </div>
 
-        ${visibleNav.map((item, idx) => `
-          <div class="nav-item ${idx === 0 ? 'is-active' : ''}" data-section="${item.section}">
+        ${visibleNav.map(item => `
+          <div class="nav-item ${item.section === initialSection ? 'is-active' : ''}" data-section="${item.section}">
             <span class="nav-item__icon">${item.icon}</span>
             <span>${item.label}</span>
           </div>
@@ -148,11 +150,12 @@ function renderApp() {
     renderLogin();
   });
 
-  navigateTo(firstSection);
+  navigateTo(initialSection);
 }
 
 export function navigateTo(section) {
   currentSection = section;
+  location.hash = section;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('is-active', el.dataset.section === section);
   });

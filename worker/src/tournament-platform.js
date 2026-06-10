@@ -164,3 +164,45 @@ export function parseStateKey(key) {
 export function buildStateKey(platform, tournamentId) {
   return `tournament:state:${platform}:${tournamentId}`;
 }
+
+const TERMINAL_STATES = {
+  matchplay: new Set(['completed', 'cancelled']),
+  challonge: new Set(['complete', 'cancelled']),
+};
+
+async function isTournamentStale(env, platform, tournamentId) {
+  if (platform === 'matchplay') {
+    if (!env.MATCHPLAY_API_KEY) return false;
+    const t = await matchplay.getTournament(env, tournamentId);
+    if (!t) return true;
+    const status = (t?.data ?? t)?.status;
+    return TERMINAL_STATES.matchplay.has(status);
+  }
+  if (platform === 'challonge') {
+    if (!env.CHALLONGE_API_KEY) return false;
+    const raw = await challonge.getTournament(env, tournamentId);
+    if (!raw) return true;
+    const state = (raw?.tournament ?? raw)?.state;
+    return TERMINAL_STATES.challonge.has(state);
+  }
+  return false;
+}
+
+/**
+ * Given the current list of KV tournament states, return the subset of KV keys
+ * that should be deleted:
+ *   - active=false entries are pruned immediately (already ended, nothing to administer)
+ *   - active=true entries are checked against the platform; deleted/terminal → stale
+ *
+ * Skips the platform check when the relevant API key is absent to avoid nuking
+ * valid state due to a missing secret.
+ */
+export async function pruneStaleTournaments(env, states) {
+  const checks = states.map(async state => {
+    const { platform, tournamentId, active } = state;
+    if (!active) return buildStateKey(platform, tournamentId);
+    const stale = await isTournamentStale(env, platform, tournamentId);
+    return stale ? buildStateKey(platform, tournamentId) : null;
+  });
+  return (await Promise.all(checks)).filter(Boolean);
+}

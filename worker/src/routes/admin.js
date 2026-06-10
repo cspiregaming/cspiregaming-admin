@@ -10,7 +10,7 @@ import { gradeMessage } from '../games-grader.js';
 import { runDailyStatbotReport, buildDailyReport } from '../statbot-daily.js';
 import { DEFAULT_WELCOME_MESSAGE } from '../welcome.js';
 import { announceTournament, startLiveTournament, endTournament } from '../tournament-actions.js';
-import { buildStateKey, VALID_PLATFORMS, getMatchPlayOrganizerIds, MATCHPLAY_ORGANIZERS_KEY, getOpenTournaments } from '../tournament-platform.js';
+import { buildStateKey, VALID_PLATFORMS, getMatchPlayOrganizerIds, MATCHPLAY_ORGANIZERS_KEY, getOpenTournaments, pruneStaleTournaments } from '../tournament-platform.js';
 
 // ─── Auth endpoints (no requireAuth) ────────────────────────────────────────
 
@@ -734,9 +734,16 @@ export async function handleAdminTournament(request, env) {
 
   if (request.method === 'GET' && !platform) {
     const list = await env.CONFIG.list({ prefix: 'tournament:state:' }).catch(() => ({ keys: [] }));
-    const tournaments = await Promise.all(
+    let tournaments = await Promise.all(
       list.keys.map(k => env.CONFIG.get(k.name, 'json').catch(() => null)),
     ).then(states => states.filter(Boolean));
+
+    const staleKeys = await pruneStaleTournaments(env, tournaments);
+    if (staleKeys.length) {
+      await Promise.all(staleKeys.map(k => env.CONFIG.delete(k).catch(() => {})));
+      const pruned = new Set(staleKeys);
+      tournaments = tournaments.filter(t => !pruned.has(buildStateKey(t.platform, t.tournamentId)));
+    }
 
     return jsonResponse({
       apiKeys: {
