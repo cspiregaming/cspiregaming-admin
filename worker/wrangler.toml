@@ -37,7 +37,7 @@ REQUESTER_ROLE_IDS = "379713136082550805,380805265815240705"
 MOD_ROLE_IDS = "379713136082550805,1063322558562304141,961330657114607646"
 # Role automatically granted to members who run /register-stream and complete
 # the connections OAuth flow.
-STREAMER_ROLE_ID = "REPLACE_WITH_STREAMER_ROLE_ID"
+STREAMER_ROLE_ID = "1109663499346513972"
 # Channel where Twitch live announcements get posted. Bot needs View Channel +
 # Send Messages + Embed Links here.
 LIVE_ANNOUNCE_CHANNEL_ID = "1135732789132673066"
