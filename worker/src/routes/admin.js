@@ -5,7 +5,7 @@ import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch 
 import * as eventPublishRequests from '../event-publish-requests.js';
 import * as streamerRegistry from '../streamers.js';
 import * as memberOptOuts from '../member-opt-outs.js';
-import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest, registerOfficialStreamer } from './streamers.js';
+import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest, postLiveAnnouncementChannelTest, registerOfficialStreamer } from './streamers.js';
 import { loadGraderConfig, saveGraderConfig, validateGraderConfig, DEFAULT_GRADER_CONFIG } from '../grader-config.js';
 import { gradeMessage } from '../games-grader.js';
 import { runDailyStatbotReport, buildDailyReport } from '../statbot-daily.js';
@@ -864,7 +864,7 @@ export async function handleAdminTwitch(request, env) {
   await requireOfficer(request, env);
   const url = new URL(request.url);
   const parts = url.pathname.split('/').filter(Boolean);
-  const action = parts[3] || null;     // 'status' | 'sync' | 'subscriptions'
+  const action = parts[3] || null;     // 'status' | 'sync' | 'subscriptions' | 'test-announce'
   const subId   = parts[4] ? safeDecode(parts[4]) : null;
 
   // GET /api/admin/twitch/status
@@ -896,6 +896,7 @@ export async function handleAdminTwitch(request, env) {
     return jsonResponse({
       secrets,
       token,
+      live_announce_channel_id: env.LIVE_ANNOUNCE_CHANNEL_ID || null,
       subscriptions: subsResult.subs || [],
       subscriptions_error: subsResult.error || null,
       total_cost: subsResult.total_cost ?? null,
@@ -960,6 +961,16 @@ export async function handleAdminTwitch(request, env) {
     const ok = await deleteSubscription(env, subId);
     if (!ok) return jsonResponse({ ok: false, error: `Failed to delete subscription ${subId}` }, 502);
     return jsonResponse({ ok: true });
+  }
+
+  // POST /api/admin/twitch/test-announce — test-post a suppressed embed to LIVE_ANNOUNCE_CHANNEL_ID
+  if (request.method === 'POST' && action === 'test-announce') {
+    let body;
+    try { body = await request.json(); } catch { return jsonResponse({ error: 'Invalid JSON' }, 400); }
+    const discordId = body?.discordId;
+    if (!discordId) return jsonResponse({ error: 'discordId is required' }, 400);
+    const result = await postLiveAnnouncementChannelTest(env, discordId);
+    return jsonResponse(result, result.ok ? 200 : 502);
   }
 
   return methodNotAllowed();

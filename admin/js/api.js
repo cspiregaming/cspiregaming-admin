@@ -92,6 +92,7 @@ export const api = {
   getTwitchStatus: () => apiFetch('/api/admin/twitch/status'),
   syncTwitch: () => apiFetch('/api/admin/twitch/sync', { method: 'POST' }),
   deleteTwitchSubscription: id => apiFetch(`/api/admin/twitch/subscriptions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  testTwitchAnnounce: discordId => apiFetch('/api/admin/twitch/test-announce', { method: 'POST', body: JSON.stringify({ discordId }) }),
 
   // Streamers
   getStreamers: () => apiFetch('/api/admin/streamers'),

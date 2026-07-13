@@ -16,7 +16,7 @@ export async function renderTwitch(container) {
 }
 
 function render(container, status) {
-  const { secrets, token, subscriptions, subscriptions_error, total_cost, max_total_cost, streamers } = status;
+  const { secrets, token, live_announce_channel_id, subscriptions, subscriptions_error, total_cost, max_total_cost, streamers } = status;
 
   // Cross-reference: build lookup maps
   const subById = {};
@@ -73,6 +73,13 @@ function render(container, status) {
             : `<span class="badge badge-red">✗ Failed</span><span style="color:var(--red);font-size:12px">${escHtml(token.error || 'Unknown error')}</span>`
           }
         </div>
+        <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <span style="min-width:220px;color:var(--text-muted);font-size:13px"><code>LIVE_ANNOUNCE_CHANNEL_ID</code></span>
+          ${live_announce_channel_id
+            ? `<span class="badge badge-green">✓ Set</span><code style="color:var(--text-muted);font-size:12px">${escHtml(live_announce_channel_id)}</code>`
+            : '<span class="badge badge-red">✗ Not set</span><span style="color:var(--text-muted);font-size:12px">Set in <code>wrangler.toml</code> [vars]</span>'
+          }
+        </div>
       </div>
       ${!allSecretsSet ? `
         <p style="color:var(--text-muted);font-size:12px;margin-top:12px;margin-bottom:0">
@@ -120,6 +127,10 @@ function render(container, status) {
 
   container.querySelectorAll('[data-delete-sub]').forEach(btn => {
     btn.addEventListener('click', () => onDeleteSub(container, btn.dataset.deleteSub, status));
+  });
+
+  container.querySelectorAll('[data-test-announce]').forEach(btn => {
+    btn.addEventListener('click', () => onTestAnnounce(btn.dataset.testAnnounce, btn));
   });
 }
 
@@ -180,7 +191,12 @@ function subscriptionTable(subscriptions, streamerByTwitchId) {
                 <td>${ownerLabel}</td>
                 <td style="color:var(--text-muted);font-size:11px;font-family:monospace">${escHtml(bid || '—')}</td>
                 <td style="color:var(--text-muted);font-size:12px;white-space:nowrap">${escHtml(created)}</td>
-                <td><button class="btn btn-danger" data-delete-sub="${escHtml(sub.id)}" style="padding:3px 8px;font-size:11px">Delete</button></td>
+                <td style="display:flex;gap:4px;flex-wrap:wrap">
+                  ${sub.type === 'stream.online' && owner
+                    ? `<button class="btn btn-outline" data-test-announce="${escHtml(owner.discordId)}" style="padding:3px 8px;font-size:11px">Test</button>`
+                    : ''}
+                  <button class="btn btn-danger" data-delete-sub="${escHtml(sub.id)}" style="padding:3px 8px;font-size:11px">Delete</button>
+                </td>
               </tr>
             `;
           }).join('')}
@@ -274,6 +290,24 @@ async function onSync(container) {
   } catch (err) {
     if (feedback) feedback.innerHTML = `<div class="alert alert-error">Sync failed: ${escHtml(err.message)}</div>`;
     if (btn) { btn.disabled = false; btn.textContent = 'Sync All Subscriptions'; }
+  }
+}
+
+async function onTestAnnounce(discordId, btn) {
+  const original = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = 'Posting…';
+  const feedback = document.getElementById('twitch-feedback');
+  if (feedback) feedback.innerHTML = '';
+  try {
+    await api.testTwitchAnnounce(discordId);
+    if (feedback) feedback.innerHTML = `<div class="alert alert-success">Test embed posted to the <strong>live announcement channel</strong>. Bot has permission to post there.</div>`;
+    btn.textContent = '✓ Posted';
+    setTimeout(() => { btn.disabled = false; btn.textContent = original; }, 3000);
+  } catch (err) {
+    if (feedback) feedback.innerHTML = `<div class="alert alert-error">Test failed: ${escHtml(err.message)} — check that the bot is in the announcement channel and has Send Messages + Embed Links permissions.</div>`;
+    btn.disabled = false;
+    btn.textContent = original;
   }
 }
 

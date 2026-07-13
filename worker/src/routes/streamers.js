@@ -353,7 +353,20 @@ export async function registerOfficialStreamer(env, { twitchLogin, workerOrigin 
 export async function postLiveAnnouncementTest(env, discordId) {
   const channelId = env.BOT_LOGS_CHANNEL_ID;
   if (!channelId) return { ok: false, error: 'BOT_LOGS_CHANNEL_ID not configured' };
+  return _postTestEmbed(env, discordId, channelId);
+}
 
+/**
+ * Same preview embed but sent to LIVE_ANNOUNCE_CHANNEL_ID so officers can
+ * verify the bot has permission to post in the real announcement channel.
+ */
+export async function postLiveAnnouncementChannelTest(env, discordId) {
+  const channelId = env.LIVE_ANNOUNCE_CHANNEL_ID;
+  if (!channelId) return { ok: false, error: 'LIVE_ANNOUNCE_CHANNEL_ID not configured' };
+  return _postTestEmbed(env, discordId, channelId);
+}
+
+async function _postTestEmbed(env, discordId, channelId) {
   const record = await streamers.getByDiscordId(env, discordId);
   if (!record) return { ok: false, error: 'Streamer not found' };
   if (!record.twitch?.login) return { ok: false, error: 'No Twitch link on this streamer' };
