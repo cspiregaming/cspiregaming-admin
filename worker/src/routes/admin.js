@@ -1,4 +1,5 @@
 import { requireAuth, requireOfficer, requireMod, requireTournamentStaff, requireTournamentAdmin, getTier, parseRoleList, buildOAuthUrl, signJwt } from '../auth.js';
+import { getAppToken, listAllSubscriptions, createSubscription, deleteSubscription } from '../twitch.js';
 import { discordOAuthExchange, fetchGuildEmojis, fetchGuildMembers } from '../discord.js';
 import { getDiscordEventsWithArchive, getOverlays, setOverlay, setOverlaysBatch } from '../discord-events.js';
 import * as eventPublishRequests from '../event-publish-requests.js';
@@ -847,6 +848,118 @@ async function handleAdminTournamentOrganizers(request, env, parts) {
     const updated = ids.filter(id => id !== organizerId);
     await env.CONFIG.put(MATCHPLAY_ORGANIZERS_KEY, JSON.stringify(updated));
     return jsonResponse({ ids: updated });
+  }
+
+  return methodNotAllowed();
+}
+
+// ─── Twitch management ───────────────────────────────────────────────────────
+
+/**
+ * GET  /api/admin/twitch/status               → secrets, token health, all EventSub subs, streamers
+ * POST /api/admin/twitch/sync                 → re-create missing/broken EventSub subs for all streamers
+ * DELETE /api/admin/twitch/subscriptions/:id  → delete a specific EventSub subscription
+ */
+export async function handleAdminTwitch(request, env) {
+  await requireOfficer(request, env);
+  const url = new URL(request.url);
+  const parts = url.pathname.split('/').filter(Boolean);
+  const action = parts[3] || null;     // 'status' | 'sync' | 'subscriptions'
+  const subId   = parts[4] ? safeDecode(parts[4]) : null;
+
+  // GET /api/admin/twitch/status
+  if (request.method === 'GET' && action === 'status') {
+    const secrets = {
+      client_id:      !!(env.TWITCH_CLIENT_ID),
+      client_secret:  !!(env.TWITCH_CLIENT_SECRET),
+      eventsub_secret: !!(env.TWITCH_EVENTSUB_SECRET),
+    };
+
+    let token = { ok: false, error: null };
+    let subsResult = { ok: false, error: null, subs: [], total_cost: null, max_total_cost: null };
+
+    if (secrets.client_id && secrets.client_secret) {
+      try {
+        await getAppToken(env);
+        token = { ok: true, error: null };
+        subsResult = await listAllSubscriptions(env);
+      } catch (err) {
+        token = { ok: false, error: err.message };
+      }
+    } else {
+      token = { ok: false, error: 'TWITCH_CLIENT_ID or TWITCH_CLIENT_SECRET not configured' };
+    }
+
+    const allStreamers = await streamerRegistry.getAll(env);
+    const twitchStreamers = Object.values(allStreamers).filter(s => s.twitch?.userId);
+
+    return jsonResponse({
+      secrets,
+      token,
+      subscriptions: subsResult.subs || [],
+      subscriptions_error: subsResult.error || null,
+      total_cost: subsResult.total_cost ?? null,
+      max_total_cost: subsResult.max_total_cost ?? null,
+      streamers: twitchStreamers,
+    });
+  }
+
+  // POST /api/admin/twitch/sync
+  if (request.method === 'POST' && action === 'sync') {
+    const workerOrigin = getOrigin(request);
+    const callbackUrl = `${workerOrigin}/api/twitch/eventsub`;
+
+    let activeSubs = [];
+    try {
+      const result = await listAllSubscriptions(env);
+      if (result.ok) activeSubs = result.subs;
+    } catch (err) {
+      return jsonResponse({ ok: false, error: `Failed to list subscriptions: ${err.message}` }, 502);
+    }
+    const activeSubIds = new Set(activeSubs.map(s => s.id));
+
+    const allStreamers = await streamerRegistry.getAll(env);
+    const twitchStreamers = Object.values(allStreamers).filter(s => s.twitch?.userId);
+
+    const synced = [];
+    const errors = [];
+
+    for (const streamer of twitchStreamers) {
+      const { userId } = streamer.twitch;
+      const current = streamer.twitch.eventSubIds || {};
+      let online  = current.online;
+      let offline = current.offline;
+      let changed = false;
+
+      if (!online || !activeSubIds.has(online)) {
+        const newId = await createSubscription(env, 'stream.online', userId, callbackUrl);
+        if (newId) { online = newId; changed = true; }
+        else errors.push({ discordId: streamer.discordId, type: 'stream.online', error: 'createSubscription returned null' });
+      }
+
+      if (!offline || !activeSubIds.has(offline)) {
+        const newId = await createSubscription(env, 'stream.offline', userId, callbackUrl);
+        if (newId) { offline = newId; changed = true; }
+        else errors.push({ discordId: streamer.discordId, type: 'stream.offline', error: 'createSubscription returned null' });
+      }
+
+      if (changed) {
+        await streamerRegistry.upsert(env, {
+          ...streamer,
+          twitch: { ...streamer.twitch, eventSubIds: { online, offline } },
+        });
+        synced.push({ discordId: streamer.discordId, login: streamer.twitch.login, online, offline });
+      }
+    }
+
+    return jsonResponse({ ok: true, synced, errors });
+  }
+
+  // DELETE /api/admin/twitch/subscriptions/:id
+  if (request.method === 'DELETE' && action === 'subscriptions' && subId) {
+    const ok = await deleteSubscription(env, subId);
+    if (!ok) return jsonResponse({ ok: false, error: `Failed to delete subscription ${subId}` }, 502);
+    return jsonResponse({ ok: true });
   }
 
   return methodNotAllowed();

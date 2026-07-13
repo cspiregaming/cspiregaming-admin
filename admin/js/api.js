@@ -88,6 +88,11 @@ export const api = {
   getSocial: () => apiFetch('/api/admin/social'),
   putSocial: data => apiFetch('/api/admin/social', { method: 'PUT', body: JSON.stringify(data) }),
 
+  // Twitch management
+  getTwitchStatus: () => apiFetch('/api/admin/twitch/status'),
+  syncTwitch: () => apiFetch('/api/admin/twitch/sync', { method: 'POST' }),
+  deleteTwitchSubscription: id => apiFetch(`/api/admin/twitch/subscriptions/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   // Streamers
   getStreamers: () => apiFetch('/api/admin/streamers'),
   removeStreamer: (discordId, reason) =>

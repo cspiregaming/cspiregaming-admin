@@ -13,7 +13,7 @@ const HELIX = 'https://api.twitch.tv/helix';
 const ID = 'https://id.twitch.tv';
 const TOKEN_CACHE_KEY = 'twitch_app_token';
 
-async function getAppToken(env) {
+export async function getAppToken(env) {
   const cached = await env.CACHE.get(TOKEN_CACHE_KEY);
   if (cached) return cached;
 
@@ -122,6 +122,29 @@ async function listSubscriptions(env, { type, broadcasterUserId } = {}) {
   const r = await helix(env, 'GET', '/eventsub/subscriptions', { query });
   if (!r.ok) return [];
   return r.json?.data || [];
+}
+
+/**
+ * Fetch all EventSub subscriptions across all pages (Twitch paginates at 100
+ * per page). Returns { ok, subs, total_cost, max_total_cost, error }.
+ */
+export async function listAllSubscriptions(env) {
+  const subs = [];
+  let after = null;
+  let total_cost = 0;
+  let max_total_cost = 10000;
+  do {
+    const query = after ? { after } : {};
+    const r = await helix(env, 'GET', '/eventsub/subscriptions', { query });
+    if (!r.ok) {
+      return { ok: false, error: r.json?.message || `HTTP ${r.status}`, subs, total_cost, max_total_cost };
+    }
+    subs.push(...(r.json?.data || []));
+    total_cost = r.json?.total_cost ?? total_cost;
+    max_total_cost = r.json?.max_total_cost ?? max_total_cost;
+    after = r.json?.pagination?.cursor || null;
+  } while (after);
+  return { ok: true, subs, total_cost, max_total_cost, error: null };
 }
 
 /**

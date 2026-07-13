@@ -344,6 +344,8 @@ tbody tr:hover td { background: var(--surface-raised); }
 .badge-green { background: rgba(72,157,77,.2); color: var(--green); }
 .badge-blue  { background: rgba(88,101,242,.2); color: #8b9cf8; }
 .badge-muted { background: var(--surface-raised); color: var(--text-muted); }
+.badge-red  { background: rgba(224,82,82,.2); color: var(--red); }
+.badge-warn { background: rgba(200,150,50,.2); color: #c89a30; }
 
 /* ─── Toggle switch ───────────────────────────────────────────── */
 
