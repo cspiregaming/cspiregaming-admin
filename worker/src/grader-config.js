@@ -109,6 +109,33 @@ export const BOARD_PRESETS = Object.freeze([
     ],
   },
   {
+    id: 'globle',
+    name: 'Globle',
+    parserType: 'custom',
+    headerRegex: 'Avg\\. Guesses',
+    // Score = guess count at the end of the squares line ("⬜🟧🟩 = 6").
+    // Lower is better, but the average is ~9, so bands rather than 1:1.
+    // Unknown format for a failed game → no "= N" → not graded (tune if needed).
+    extractors: [
+      { name: 'guesses', kind: 'regex', pattern: '=\\s*(\\d+)\\s*$', default: null },
+      { name: 'streak', kind: 'regex', pattern: '🔥\\s*(\\d+)', default: null },
+    ],
+    scoring: {
+      field: 'guesses', offset: 0, cap: 6,
+      bands: [
+        { min: 0, score: 1 },  // 1–3
+        { min: 4, score: 2 },  // 4–5
+        { min: 6, score: 3 },  // 6–7
+        { min: 8, score: 4 },  // 8–9
+        { min: 10, score: 5 }, // 10–12
+        { min: 13, score: 6 }, // 13+
+      ],
+    },
+    samples: [
+      { label: '6 guesses', content: '🌎 Oct 29, 2026 🌍\n🔥 4 | Avg. Guesses: 8.93\n⬜⬜🟧🟧🟥🟩 = 6' },
+    ],
+  },
+  {
     id: '4x3',
     name: '4x3.fun',
     parserType: 'custom',

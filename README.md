@@ -108,7 +108,7 @@ Default score → emoji legend (Wordle/Framed scores 1–6, Connections 1–4, a
 | 3 | 💫 | | Miss | ❌ |
 | 4 | ✴️ | | | |
 
-Other boards (**Strands**, **Krillion**, **4x3.fun**) are not in the defaults. Add them from **+ Add board… → Presets**; saved configs replace the defaults, so existing deployments are never changed silently.
+Other boards (**Strands**, **Krillion**, **Globle**, **4x3.fun**) are not in the defaults. Add them from **+ Add board… → Presets**; saved configs replace the defaults, so existing deployments are never changed silently.
 
 **Parser types.** Four are built in; `custom` is declarative and needs no worker code:
 
@@ -122,6 +122,8 @@ Other boards (**Strands**, **Krillion**, **4x3.fun**) are not in the defaults. A
   - **bonuses** (any board type) `{field, op, value, emoji}`: extra reactions added when the rule holds. Fields are extractor names, `score`, or `fail` (0/1). Ops: `== != > >= < <=`.
 
 **Krillion preset** — detects `^Krillion #N`; `depth` is the bare-number line under the header. Higher is better, via bands: 450+ → score 1 (🦐), 351–449 → 2 (🦑), 251–350 → 3 (🦞), 151–250 → 4 (🐟), 0–150 → 5 (🫧). The emojis are a per-board legend; swap in Krillion's custom emojis (`name:id`) in the editor.
+
+**Globle preset** — detects `Avg. Guesses`; `guesses` is the number after `=` on the squares line, `streak` is the number after 🔥 (extracted but unused). Lower is better, scored by bands because the average is ~9 guesses: 1–3 → score 1, 4–5 → 2, 6–7 → 3, 8–9 → 4, 10–12 → 5, 13+ → 6. A post without an `= N` (e.g. a failed game, format unknown) is not graded.
 
 **4x3.fun preset** — detects `4x3.fun`; extracts `points` (`-?[\d,]+ points`, range roughly −100…150) and `mistakes` (`N mistake(s)`, default 0). Primary reaction is `mistakes + 1` (0 mistakes → score-1 emoji). Placeholder bonuses: points ≥ 130 → 💯, no mistakes → ✨, points < 0 → 💀 (tune in the admin).
 
