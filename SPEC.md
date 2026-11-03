@@ -95,7 +95,7 @@ V8: Discord link buttons ! `{type:2, style:5}` — `type:5` = User Select, cause
 V9: site `$sceDelegateProvider.resourceUrlWhitelist` ! `['self','https://www.google.com/**']` — embed URLs outside this ⊥ load
 V10: worker `/api/public/content` failure → officer/event fallback silent; `/api/public/members` failure → visible error — ? inconsistent, not confirmed intentional
 V11: site `WORKER_BASE` ! point @ `api.cspiregaming.com` (custom domain), ⊥ personal `*.workers.dev` subdomain
-V12: games-grader boards ∈ {wordle,framed,connections,strands,custom}; `custom` = declarative (extractors→scoring→legend, + bonus rules) ∴ new game ⊥ code change. Reactions = primary + bonuses, sequential. Per-board legend overrides global key-by-key. Presets (4x3, strands) opt-in via admin; saved `grader_config` ⊥ auto-gain new default boards. Only msgs newer than high-water mark graded (⊥ backfill) ∴ board added after a post ⇏ that post graded
+V12: games-grader boards ∈ {wordle,framed,connections,strands,custom}; `custom` = declarative (extractors→scoring→legend, + bonus rules) ∴ new game ⊥ code change. Reactions = primary + bonuses, sequential. Per-board legend overrides global key-by-key. `scoring.bands` ([{min,score}], highest min ≤ value wins) for higher-is-better. Presets (4x3, krillion, strands) opt-in via admin; saved `grader_config` ⊥ auto-gain new default boards. Only msgs newer than high-water mark graded (⊥ backfill) ∴ board added after a post ⇏ that post graded
 
 ## §T TASKS
 id|status|task|cites

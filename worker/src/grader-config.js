@@ -25,8 +25,11 @@
  *                        (a number) or null.
  *       kind "count"   → how many times the literal `pattern` appears.
  *       kind "present" → 1 if regex `pattern` matches, else 0.
- *   scoring: {field, offset, cap, failWhen?}
+ *   scoring: {field, offset, cap, bands?, failWhen?}
  *       score = clamp(extractor[field] + offset, 1, cap) → legend `score{N}`.
+ *       With `bands: [{min, score}]` instead, the band with the highest `min`
+ *       ≤ value wins (below every min → the lowest band); offset is ignored.
+ *       Use for "higher is better" games, e.g. min 450 → score 1.
  *       `failWhen: {field, op, value}` → legend `miss` instead.
  *       A null `field` value means "not a board" (no grade).
  *
@@ -79,6 +82,31 @@ export const BOARD_PRESETS = Object.freeze([
     name: 'Strands',
     parserType: 'strands',
     headerRegex: '^Strands\\s+#\\d+',
+  },
+  {
+    id: 'krillion',
+    name: 'Krillion',
+    parserType: 'custom',
+    headerRegex: '^Krillion\\s+#\\d+',
+    // "The Bearing": higher is better. 450+ → score1 … 0–150 → score5.
+    // Score is the bare-number line under the header.
+    extractors: [
+      { name: 'depth', kind: 'regex', pattern: '^\\s*(\\d+)\\s*$', default: null },
+    ],
+    scoring: {
+      field: 'depth', offset: 0, cap: 6,
+      bands: [
+        { min: 450, score: 1 }, // One in a krillion
+        { min: 351, score: 2 }, // Deep cut
+        { min: 251, score: 3 }, // Rare
+        { min: 151, score: 4 }, // Schooler
+        { min: 0, score: 5 },   // Plankton
+      ],
+    },
+    legend: { score1: '🦐', score2: '🦑', score3: '🦞', score4: '🐟', score5: '🫧' },
+    samples: [
+      { label: 'Rare (330)', content: 'Krillion #111 🦐\n330\n\n🐟🦑🦑🐟🐟🦑🦑' },
+    ],
   },
   {
     id: '4x3',
@@ -270,6 +298,17 @@ export function validateBoard(b) {
     if (!Number.isInteger(offset) || offset < -10 || offset > 10) return fail('scoring.offset must be an integer −10…10.');
     if (!Number.isInteger(cap) || cap < 1 || cap > 6) return fail('scoring.cap must be an integer 1…6.');
     board.scoring = { field: sc.field, offset, cap };
+    if (sc.bands != null) {
+      if (!Array.isArray(sc.bands) || !sc.bands.length || sc.bands.length > 6) return fail('scoring.bands must have 1–6 entries.');
+      board.scoring.bands = [];
+      for (const bd of sc.bands) {
+        const min = Number(bd?.min);
+        const score = Number(bd?.score);
+        if (bd?.min === '' || bd?.min == null || !Number.isFinite(min)) return fail('each band needs a numeric min.');
+        if (!Number.isInteger(score) || score < 1 || score > 6) return fail('each band score must be an integer 1…6.');
+        board.scoring.bands.push({ min, score });
+      }
+    }
     if (sc.failWhen) {
       const fw = validateCondition(sc.failWhen, extNames);
       if (!fw.ok) return fail(`scoring.failWhen: ${fw.error}`);

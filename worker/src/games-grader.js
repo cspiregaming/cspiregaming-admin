@@ -98,7 +98,15 @@ function parseCustom(board, content, legend) {
   if (sc.failWhen && compare(values[sc.failWhen.field], sc.failWhen.op, sc.failWhen.value)) {
     return { game: board.id, score: null, emoji: legend.miss, fail: true, values };
   }
-  const score = Math.min(Math.max(Math.trunc(base) + (sc.offset || 0), 1), sc.cap || 6);
+  let raw;
+  if (sc.bands?.length) {
+    const sorted = [...sc.bands].sort((a, b) => b.min - a.min);
+    const hit = sorted.find(bd => base >= bd.min) || sorted[sorted.length - 1];
+    raw = hit.score;
+  } else {
+    raw = Math.trunc(base) + (sc.offset || 0);
+  }
+  const score = Math.min(Math.max(raw, 1), sc.cap || 6);
   return { game: board.id, score, emoji: legend[`score${score}`], fail: false, values };
 }
 

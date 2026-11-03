@@ -485,11 +485,27 @@ export async function renderGrader(container) {
         <div class="grader-section">
           <div class="grader-section__head"><h4>Primary reaction</h4></div>
           <div class="grader-rule">
-            Score =
+            Score from
             <select data-sc="field" style="width:auto">${fieldOptions(b.scoring?.field)}</select>
-            + <input data-sc="offset" type="number" value="${b.scoring?.offset ?? 0}" style="width:64px">
-            , at most score <input data-sc="cap" type="number" min="1" max="6" value="${b.scoring?.cap ?? 6}" style="width:64px">
+            <select data-sc="mode" style="width:auto">
+              <option value="offset" ${b.scoring?.bands ? '' : 'selected'}>plus an offset (lower is better)</option>
+              <option value="bands" ${b.scoring?.bands ? 'selected' : ''}>by value bands (e.g. higher is better)</option>
+            </select>
           </div>
+          ${b.scoring?.bands ? `
+            ${b.scoring.bands.map((bd, i) => `
+              <div class="grader-rule">
+                ≥ <input data-band="${i}:min" type="number" value="${escHtml(bd.min)}" style="width:90px">
+                → score <input data-band="${i}:score" type="number" min="1" max="6" value="${escHtml(bd.score)}" style="width:64px">
+                <span class="grader-band-preview">${renderEmojiPreview({ ...draft.legend, ...(b.legend || {}) }[`score${bd.score}`])}</span>
+                <button type="button" class="btn btn-ghost" data-del-band="${i}" title="Remove">✕</button>
+              </div>`).join('')}
+            <div class="grader-rule"><button type="button" class="btn btn-outline" data-add-band style="padding:2px 10px;font-size:12px">+ Add band</button></div>
+            <p class="grader-hint">The band with the highest “≥” the value reaches wins; anything lower uses the lowest band.</p>`
+          : `<div class="grader-rule">
+              + <input data-sc="offset" type="number" value="${b.scoring?.offset ?? 0}" style="width:64px">
+              , at most score <input data-sc="cap" type="number" min="1" max="6" value="${b.scoring?.cap ?? 6}" style="width:64px">
+            </div>`}
           <div class="grader-rule">
             <label class="grader-check"><input type="checkbox" data-sc="hasFail" ${b.scoring?.failWhen ? 'checked' : ''}> Use the miss reaction when</label>
             ${b.scoring?.failWhen ? `
@@ -549,6 +565,9 @@ export async function renderGrader(container) {
         const k = t.dataset.sc;
         if (k === 'offset' || k === 'cap') b.scoring[k] = t.value === '' ? '' : Number(t.value);
         if (k === 'failValue') b.scoring.failWhen.value = t.value;
+      } else if (t.dataset.band) {
+        const [i, key] = t.dataset.band.split(':');
+        b.scoring.bands[+i][key] = t.value === '' ? '' : Number(t.value);
       } else if (t.dataset.blegend) {
         b.legend ||= {};
         if (t.value) b.legend[t.dataset.blegend] = t.value; else delete b.legend[t.dataset.blegend];
@@ -590,9 +609,15 @@ export async function renderGrader(container) {
         const [, key] = t.dataset.bonus.split(':');
         if (key !== 'field' && key !== 'op') return;
         return runLive();
+      } else if (t.dataset.band) {
+        // Re-render so the legend preview next to the band updates.
       } else if (t.dataset.sc) {
         const k = t.dataset.sc;
         if (k === 'field') b.scoring.field = t.value;
+        else if (k === 'mode') {
+          if (t.value === 'bands') b.scoring.bands = [{ min: 0, score: 1 }];
+          else delete b.scoring.bands;
+        }
         else if (k === 'hasFail') b.scoring.failWhen = t.checked ? { field: b.scoring.field, op: '==', value: 0 } : undefined;
         else if (k === 'failField') b.scoring.failWhen.field = t.value;
         else if (k === 'failOp') b.scoring.failWhen.op = t.value;
@@ -609,6 +634,8 @@ export async function renderGrader(container) {
       if (!t) return;
       if ('addExt' in t.dataset) b.extractors.push({ name: `value${b.extractors.length + 1}`, kind: 'regex', pattern: '(\\d+)', default: null });
       else if (t.dataset.delExt != null) { if (b.extractors.length <= 1) return; const [rm] = b.extractors.splice(+t.dataset.delExt, 1); if (b.scoring?.field === rm.name) b.scoring.field = b.extractors[0].name; }
+      else if ('addBand' in t.dataset) b.scoring.bands.push({ min: 0, score: Math.min(b.scoring.bands.length + 1, 6) });
+      else if (t.dataset.delBand != null) { if (b.scoring.bands.length <= 1) return; b.scoring.bands.splice(+t.dataset.delBand, 1); }
       else if ('addBonus' in t.dataset) b.bonuses.push({ field: b.extractors?.[0]?.name || 'score', op: '>=', value: 0, emoji: '' });
       else if (t.dataset.delBonus != null) b.bonuses.splice(+t.dataset.delBonus, 1);
       else return;
