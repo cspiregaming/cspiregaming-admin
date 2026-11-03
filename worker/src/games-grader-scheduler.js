@@ -5,7 +5,7 @@
  *   1. Reads `daily_games_last_seen` from CONTENT KV (a Discord message ID).
  *   2. Fetches messages in DAILY_GAMES_CHANNEL_ID newer than that ID.
  *   3. Skips bot authors and any message that doesn't parse as a known board.
- *   4. Reacts with the grade emoji on each parseable message.
+ *   4. Reacts with the grade emoji (plus any bonus-rule emojis) on each parseable message.
  *   5. Updates the high-water mark to the newest message ID seen.
  *
  * The high-water mark is intentionally advanced to the newest message ID even
@@ -70,12 +70,16 @@ export async function runDailyGamesGrader(env) {
     const grade = gradeMessage(msg.content, graderConfig);
     if (!grade) continue;
 
-    const r = await addReaction(env, channelId, msg.id, grade.emoji);
-    if (!r.ok && r.status !== 204) {
-      console.error(
-        `games-grader: react ${grade.game} score=${grade.score ?? 'X'} on ${msg.id} → ${r.status}`,
-        r.json,
-      );
+    // Primary reaction first, then any bonus reactions. Sequential so they
+    // land in order and we stay inside Discord's reaction rate limit.
+    for (const emoji of grade.emojis || [grade.emoji]) {
+      const r = await addReaction(env, channelId, msg.id, emoji);
+      if (!r.ok && r.status !== 204) {
+        console.error(
+          `games-grader: react ${grade.game} score=${grade.score ?? 'X'} ${emoji} on ${msg.id} → ${r.status}`,
+          r.json,
+        );
+      }
     }
   }
 

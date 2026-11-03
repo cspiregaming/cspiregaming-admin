@@ -13,6 +13,12 @@
  *                   color rows count as solved groups)
  *   - strands     → header regex gates; score = hints used + 1 (💡 count),
  *                   capped at score6; no miss state
+ *   - custom      → declarative: board-defined extractors → score + bonuses
+ *                   (see grader-config.js)
+ *
+ * Every grade is `{game, score, emoji, emojis, fail, values, bonuses}`:
+ * `emoji` is the primary reaction, `emojis` is primary + fired bonus reactions
+ * (deduped, in order) and is what the scheduler applies.
  *
  * Legend (score → emoji) and the per-board header regex live in
  * `CONFIG:grader_config` — editable from the Daily Games admin view. See
@@ -24,8 +30,8 @@ import { DEFAULT_GRADER_CONFIG } from './grader-config.js';
 export function gradeMessage(content, config = DEFAULT_GRADER_CONFIG) {
   if (!content) return null;
   for (const board of config.boards || []) {
-    const result = runBoard(board, content, config.legend);
-    if (result) return result;
+    const result = runBoard(board, content, { ...config.legend, ...(board.legend || {}) });
+    if (result) return finalize(board, result);
   }
   return null;
 }
@@ -45,8 +51,73 @@ function runBoard(board, content, legend) {
     case 'framed':      return parseFramed(board, content, legend);
     case 'connections': return parseConnections(board, content, legend);
     case 'strands':     return parseStrands(board, content, legend);
+    case 'custom':      return parseCustom(board, content, legend);
     default:            return null;
   }
+}
+
+/** Attach the combined reaction list + bonus rule results to a parser result. */
+function finalize(board, result) {
+  const values = { ...(result.values || {}), score: result.score, fail: result.fail ? 1 : 0 };
+  const bonuses = [];
+  for (const rule of board.bonuses || []) {
+    if (compare(values[rule.field], rule.op, rule.value)) bonuses.push(rule);
+  }
+  const emojis = [...new Set([result.emoji, ...bonuses.map(r => r.emoji)].filter(Boolean))];
+  return { ...result, values, emojis, bonuses };
+}
+
+function compare(actual, op, expected) {
+  if (actual == null) return false;
+  switch (op) {
+    case '==': return actual === expected;
+    case '!=': return actual !== expected;
+    case '>':  return actual > expected;
+    case '>=': return actual >= expected;
+    case '<':  return actual < expected;
+    case '<=': return actual <= expected;
+    default:   return false;
+  }
+}
+
+// ─── Custom (declarative) ───────────────────────────────────────────────────
+//
+// Extractors turn the post into numbers; `scoring` turns one of them into a
+// 1…cap score (or the miss reaction). Missing primary value → not a board.
+
+function parseCustom(board, content, legend) {
+  const values = {};
+  for (const ex of board.extractors || []) {
+    values[ex.name] = extract(ex, content);
+  }
+  const sc = board.scoring;
+  if (!sc) return null;
+  const base = values[sc.field];
+  if (base == null) return null;
+
+  if (sc.failWhen && compare(values[sc.failWhen.field], sc.failWhen.op, sc.failWhen.value)) {
+    return { game: board.id, score: null, emoji: legend.miss, fail: true, values };
+  }
+  const score = Math.min(Math.max(Math.trunc(base) + (sc.offset || 0), 1), sc.cap || 6);
+  return { game: board.id, score, emoji: legend[`score${score}`], fail: false, values };
+}
+
+function extract(ex, content) {
+  if (ex.kind === 'count') {
+    return ex.pattern ? content.split(ex.pattern).length - 1 : 0;
+  }
+  let re;
+  try {
+    re = new RegExp(ex.pattern, 'm');
+  } catch {
+    return null;
+  }
+  const m = re.exec(content);
+  if (ex.kind === 'present') return m ? 1 : 0;
+  // regex
+  if (!m || m[1] == null) return ex.default ?? null;
+  const n = parseFloat(m[1].replace(/,/g, ''));
+  return Number.isFinite(n) ? n : (ex.default ?? null);
 }
 
 // ─── Wordle-style ───────────────────────────────────────────────────────────

@@ -427,7 +427,7 @@ tbody tr:hover td { background: var(--surface-raised); }
 
 .grader-legend-row {
   display: grid;
-  grid-template-columns: 90px 36px 1fr;
+  grid-template-columns: 90px 1fr;
   align-items: center;
   gap: 8px;
   background: var(--surface-raised);
@@ -444,17 +444,49 @@ tbody tr:hover td { background: var(--surface-raised); }
   font-weight: 600;
 }
 
-.grader-legend-row__preview {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 28px;
-}
+.grader-legend-grid--tight { grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); }
 
-.grader-legend-row__input {
-  padding: 6px 10px;
-  font-size: 13px;
+/* Emoji input: preview + text + picker button */
+.emoji-field { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.emoji-field__preview { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; flex: none; }
+.emoji-field__input { padding: 6px 10px; font-size: 13px; min-width: 0; width: 100%; }
+.emoji-field__pick { padding: 4px 8px; flex: none; }
+
+.emoji-picker {
+  position: absolute;
+  z-index: 200;
+  width: 288px;
+  max-height: 320px;
+  overflow-y: auto;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,.5);
+  padding: 10px;
 }
+.emoji-picker__title { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin: 4px 0 6px; }
+.emoji-picker__grid { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.emoji-picker__grid button { width: 36px; height: 36px; background: var(--surface-raised); border: 1px solid transparent; border-radius: 6px; font-size: 20px; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; padding: 0; }
+.emoji-picker__grid button:hover { border-color: var(--blue); }
+.emoji-picker__grid img { width: 24px; height: 24px; object-fit: contain; }
+
+.grader-mini { display: inline-flex; gap: 4px; align-items: center; }
+.grader-mini > * { font-size: 16px !important; }
+.grader-move { padding: 2px 6px; font-size: 11px; }
+
+/* Test result trace */
+.grader-trace { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; font-size: 13px; background: var(--surface-raised); }
+.grader-trace--hit { border-color: var(--green); }
+.grader-trace--miss { color: var(--text); }
+.grader-trace--err { border-color: var(--red); color: var(--red); }
+.grader-trace__vals { display: flex; gap: 14px; flex-wrap: wrap; margin: 6px 0; color: var(--text-muted); }
+.grader-trace__vals em { font-style: normal; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
+.grader-trace__vals span { color: var(--text); }
+.grader-trace__vals i { color: var(--red); font-style: normal; }
+.grader-trace__reacts { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.grader-trace__label { color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; }
+.grader-trace__emoji { display: inline-flex; align-items: center; justify-content: center; min-width: 32px; height: 32px; background: var(--bg); border-radius: 6px; padding: 0 4px; }
+.grader-trace__bonus { margin-top: 6px; color: var(--text-muted); font-size: 12px; }
 
 /* Add Board modal */
 .grader-board-dialog {
@@ -479,6 +511,27 @@ tbody tr:hover td { background: var(--surface-raised); }
   overflow-y: auto;
   margin: 0;
 }
+
+/* Board editor */
+.grader-board-dialog__panel--wide { width: min(1100px, 95vw); }
+.grader-editor { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 24px; }
+.grader-editor__test { position: sticky; top: 0; align-self: start; }
+.grader-editor__test h3 { margin: 0 0 8px; font-size: 14px; }
+.grader-detect { display: flex; gap: 8px; }
+.grader-hint { color: var(--text-muted); font-size: 12px; margin: 6px 0 0; }
+.grader-hint code { font-size: 11px; }
+.grader-section { border-top: 1px solid var(--border); padding-top: 12px; margin-bottom: 16px; }
+.grader-section__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.grader-section__head h4 { margin: 0; font-size: 13px; }
+.grader-rule { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 8px; font-size: 13px; }
+.grader-rule input, .grader-rule select { padding: 6px 8px; font-size: 13px; }
+.grader-rule .emoji-field { width: 190px; }
+.grader-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted); margin: 0; text-transform: none; letter-spacing: 0; cursor: pointer; }
+.grader-check input { width: auto; }
+.grader-samples { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 8px; min-height: 4px; }
+.chip__x { background: none; border: none; color: var(--text-muted); cursor: pointer; padding: 0 0 0 4px; font-size: 14px; line-height: 1; }
+.chip__x:hover { color: var(--red); }
+@media (max-width: 800px) { .grader-editor { grid-template-columns: 1fr; } .grader-editor__test { position: static; } }
 
 /* Available Custom Emojis grid */
 .emoji-grid {

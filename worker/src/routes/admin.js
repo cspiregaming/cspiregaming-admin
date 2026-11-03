@@ -6,7 +6,7 @@ import * as eventPublishRequests from '../event-publish-requests.js';
 import * as streamerRegistry from '../streamers.js';
 import * as memberOptOuts from '../member-opt-outs.js';
 import { unregisterStreamer, postRemovalAuditLog, postLiveAnnouncementTest, postLiveAnnouncementChannelTest, registerOfficialStreamer } from './streamers.js';
-import { loadGraderConfig, saveGraderConfig, validateGraderConfig, DEFAULT_GRADER_CONFIG } from '../grader-config.js';
+import { loadGraderConfig, saveGraderConfig, validateGraderConfig, DEFAULT_GRADER_CONFIG, PARSER_TYPES, LEGEND_KEYS, EXTRACTOR_KINDS, RULE_OPS, BOARD_PRESETS } from '../grader-config.js';
 import { gradeMessage } from '../games-grader.js';
 import { runDailyStatbotReport, buildDailyReport } from '../statbot-daily.js';
 import { DEFAULT_WELCOME_MESSAGE } from '../welcome.js';
@@ -339,7 +339,8 @@ export async function handleAdminSocial(request, env) {
 // ─── Daily-games grader ─────────────────────────────────────────────────────
 
 /**
- * GET  /api/admin/grader        → { config, parserTypes, legendKeys }
+ * GET  /api/admin/grader        → { config, defaults, parserTypes, legendKeys,
+ *                                 extractorKinds, ruleOps, presets }
  * PUT  /api/admin/grader        → body: { legend, boards }; full replace
  * POST /api/admin/grader/test   → body: { content }; runs current config
  *                                 against the content and returns the grade
@@ -359,8 +360,11 @@ export async function handleAdminGrader(request, env) {
     return jsonResponse({
       config,
       defaults: DEFAULT_GRADER_CONFIG,
-      parserTypes: ['wordle', 'framed', 'connections'],
-      legendKeys: ['score1', 'score2', 'score3', 'score4', 'score5', 'score6', 'miss'],
+      parserTypes: PARSER_TYPES,
+      legendKeys: LEGEND_KEYS,
+      extractorKinds: EXTRACTOR_KINDS,
+      ruleOps: RULE_OPS,
+      presets: BOARD_PRESETS,
     });
   }
 
