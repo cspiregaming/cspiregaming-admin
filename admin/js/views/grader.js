@@ -471,11 +471,11 @@ export async function renderGrader(container) {
         <div class="grader-section">
           <div class="grader-section__head"><h4>Extractors</h4>
             <button type="button" class="btn btn-outline" data-add-ext style="padding:2px 10px;font-size:12px">+ Add</button></div>
-          <p class="grader-hint">Pull numbers out of the post. <strong>regex</strong>: number in the first capture group (commas ok, negatives ok). <strong>count</strong>: how often a literal text/emoji appears. <strong>present</strong>: 1 if the regex matches.</p>
+          <p class="grader-hint">Pull numbers out of the post. <strong>regex</strong>: number in the first capture group (commas ok, negatives ok). <strong>count</strong>: how often a literal text/emoji appears. <strong>present</strong>: 1 if the regex matches. <strong>matches</strong>: how many times the regex matches (e.g. count lines of a shape).</p>
           ${(b.extractors || []).map((x, i) => `
             <div class="grader-rule grader-rule--ext">
               <input data-ext="${i}:name" value="${escHtml(x.name)}" placeholder="name" maxlength="24" style="width:110px">
-              <select data-ext="${i}:kind" style="width:100px">${['regex', 'count', 'present'].map(k => `<option ${k === x.kind ? 'selected' : ''}>${k}</option>`).join('')}</select>
+              <select data-ext="${i}:kind" style="width:100px">${(payload.extractorKinds || ['regex', 'count', 'present', 'matches']).map(k => `<option ${k === x.kind ? 'selected' : ''}>${k}</option>`).join('')}</select>
               <input data-ext="${i}:pattern" value="${escHtml(x.pattern)}" placeholder="${x.kind === 'count' ? 'text to count, e.g. 💡' : '(-?[\\d,]+)\\s+points'}" style="flex:1;min-width:150px;font-family:ui-monospace,monospace">
               ${x.kind === 'regex' ? `<input data-ext="${i}:default" value="${x.default == null ? '' : escHtml(x.default)}" placeholder="default" title="Value when the pattern isn't found (blank = not a board)" style="width:80px">` : ''}
               <button type="button" class="btn btn-ghost" data-del-ext="${i}" title="Remove">✕</button>

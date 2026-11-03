@@ -117,7 +117,7 @@ Other boards (**Strands**, **Krillion**, **Globle**, **Codenames Daily**, **4x3.
 - `connections` — header regex is a presence gate. Also requires a `Puzzle #N` line. Scoring counts solid-same-color rows (groups solved) and mixed rows (mistakes).
 - `strands` — header regex is a presence gate. Score = 💡 hints + 1, capped at 6; no miss state.
 - `custom` — the board defines:
-  - **extractors** `{name, kind, pattern, default?}`: `regex` (number in the first capture group; commas and negatives ok; no match → `default` or "not a board"), `count` (occurrences of a literal string/emoji), `present` (1 if the regex matches).
+  - **extractors** `{name, kind, pattern, default?}`: `regex` (number in the first capture group; commas and negatives ok; no match → `default` or "not a board"), `count` (occurrences of a literal string/emoji), `present` (1 if the regex matches), `matches` (number of regex matches, global + multiline — e.g. count lines of a shape).
   - **scoring** `{field, offset, cap, bands?, failWhen?}`: score = `clamp(field + offset, 1, cap)`, mapped through the legend; or, with `bands: [{min, score}]`, the band with the highest `min` ≤ the value wins (for higher-is-better games); `failWhen` (e.g. `mistakes > 3`) uses the miss reaction.
   - **bonuses** (any board type) `{field, op, value, emoji}`: extra reactions added when the rule holds. Fields are extractor names, `score`, or `fail` (0/1). Ops: `== != > >= < <=`.
 
@@ -125,7 +125,7 @@ Other boards (**Strands**, **Krillion**, **Globle**, **Codenames Daily**, **4x3.
 
 **Globle preset** — detects `Avg. Guesses`; `guesses` is the number after `=` on the squares line, `streak` is the number after 🔥 (extracted but unused). Lower is better, scored by bands because the average is ~9 guesses: 1–3 → score 1, 4–5 → 2, 6–7 → 3, 8–9 → 4, 10–12 → 5, 13+ → 6. A post without an `= N` (e.g. a failed game, format unknown) is not graded.
 
-**Codenames Daily preset** — detects a line starting `CODENAMES DAILY`; `wrong` = count of ❌, `correct` = count of ✅ (unused by default). Primary reaction is `wrong + 1` (0 wrong → score 1, up to 3 wrong → score 4).
+**Codenames Daily preset** — detects a line starting `CODENAMES DAILY`; `wrong` = count of ❌, `correct` = count of ✅ (unused by default), `rounds` = number of clue lines. Primary reaction is `wrong + 1` (0 wrong → score 1). A perfect 3-round game unlocks a 4th bonus clue line (2–4 words, changes daily); `rounds ≥ 4` adds 🎁, and a miss in the bonus round counts as a wrong guess.
 
 **4x3.fun preset** — detects `4x3.fun`; extracts `points` (`-?[\d,]+ points`, range roughly −100…150) and `mistakes` (`N mistake(s)`, default 0). Primary reaction is `mistakes + 1` (0 mistakes → score-1 emoji). Placeholder bonuses: points ≥ 130 → 💯, no mistakes → ✨, points < 0 → 💀 (tune in the admin).
 

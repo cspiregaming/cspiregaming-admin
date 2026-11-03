@@ -116,10 +116,11 @@ function extract(ex, content) {
   }
   let re;
   try {
-    re = new RegExp(ex.pattern, 'm');
+    re = new RegExp(ex.pattern, ex.kind === 'matches' ? 'gm' : 'm');
   } catch {
     return null;
   }
+  if (ex.kind === 'matches') return (content.match(re) || []).length;
   const m = re.exec(content);
   if (ex.kind === 'present') return m ? 1 : 0;
   // regex

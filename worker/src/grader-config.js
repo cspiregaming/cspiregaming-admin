@@ -25,6 +25,8 @@
  *                        (a number) or null.
  *       kind "count"   → how many times the literal `pattern` appears.
  *       kind "present" → 1 if regex `pattern` matches, else 0.
+ *       kind "matches" → how many times regex `pattern` matches (global,
+ *                        multiline) — e.g. count lines of a given shape.
  *   scoring: {field, offset, cap, bands?, failWhen?}
  *       score = clamp(extractor[field] + offset, 1, cap) → legend `score{N}`.
  *       With `bands: [{min, score}]` instead, the band with the highest `min`
@@ -140,15 +142,21 @@ export const BOARD_PRESETS = Object.freeze([
     name: 'Codenames Daily',
     parserType: 'custom',
     headerRegex: '^CODENAMES DAILY',
-    // Three clues, each "WORD N ✅✅❌". Primary = wrong guesses (❌, max 3):
-    // 0 → score1 … 3 → score4. Correct (✅) count is extracted for bonus rules.
+    // Clue lines look like "WORD N ✅✅❌". Primary = wrong guesses (❌):
+    // 0 → score1, 1 → score2, … A perfect 3 rounds unlocks a 4th (bonus) clue
+    // line, so `rounds` ≥ 4 earns 🎁. A miss in the bonus round counts as wrong.
     extractors: [
       { name: 'wrong', kind: 'count', pattern: '❌' },
       { name: 'correct', kind: 'count', pattern: '✅' },
+      { name: 'rounds', kind: 'matches', pattern: '^\\S.*\\s\\d+\\s+[✅❌]+\\s*$' },
     ],
     scoring: { field: 'wrong', offset: 1, cap: 6 },
+    bonuses: [
+      { field: 'rounds', op: '>=', value: 4, emoji: '🎁' },
+    ],
     samples: [
       { label: '2 wrong, 5 right', content: 'CODENAMES DAILY\n2.11.2026\nGLADIATOR 2 ✅✅\nCOMA 4 ✅✅❌\nDEADLY 3 ✅❌\nCan you beat this?\nhttps://codenames.game/daily/en' },
+      { label: 'Perfect + bonus round', content: 'CODENAMES DAILY\n3.11.2026\nCAKE 2 ✅✅\nRIVER 3 ✅✅✅\nSPY 4 ✅✅✅✅\nMOON 2 ✅✅\nCan you beat this?\nhttps://codenames.game/daily/en' },
     ],
   },
   {
@@ -180,7 +188,7 @@ export const BOARD_PRESETS = Object.freeze([
 const KV_KEY = 'grader_config';
 export const PARSER_TYPES = ['wordle', 'framed', 'connections', 'strands', 'custom'];
 export const LEGEND_KEYS = ['score1', 'score2', 'score3', 'score4', 'score5', 'score6', 'miss'];
-export const EXTRACTOR_KINDS = ['regex', 'count', 'present'];
+export const EXTRACTOR_KINDS = ['regex', 'count', 'present', 'matches'];
 export const RULE_OPS = ['==', '!=', '>', '>=', '<', '<='];
 
 const NAME_RE = /^[a-z][a-z0-9_]{0,23}$/i;
