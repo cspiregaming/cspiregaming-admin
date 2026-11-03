@@ -114,8 +114,12 @@ function applyOverlay(overlays, eventId, overlay) {
     published: !!overlay.published,
     actionButtonText: overlay.actionButtonText || null,
     actionButtonUrl: overlay.actionButtonUrl || null,
+    // Secondary "RSVP"-style button. The URL is required; without it the
+    // button (and its text) is dropped.
+    eventButtonText: overlay.eventButtonUrl ? (overlay.eventButtonText || 'RSVP') : null,
+    eventButtonUrl: overlay.eventButtonUrl || null,
   };
-  if (!next.published && !next.actionButtonText && !next.actionButtonUrl) {
+  if (!next.published && !next.actionButtonText && !next.actionButtonUrl && !next.eventButtonUrl) {
     delete overlays[eventId];
   } else {
     overlays[eventId] = next;

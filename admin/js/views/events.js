@@ -122,6 +122,12 @@ export async function renderEvents(container) {
             <input type="url" class="discord-action-url" placeholder="https://..."
                    value="${escHtml(overlay.actionButtonUrl || '')}" style="flex:2;min-width:0">
           </div>
+          <div style="display:flex;gap:6px;margin-top:6px">
+            <input type="text" class="discord-event-text" placeholder="RSVP"
+                   value="${escHtml(overlay.eventButtonText || '')}" style="flex:1;min-width:0">
+            <input type="url" class="discord-event-url" placeholder="Event link (required for RSVP button)"
+                   value="${escHtml(overlay.eventButtonUrl || '')}" style="flex:2;min-width:0">
+          </div>
         </td>
       </tr>
     `;
@@ -237,15 +243,19 @@ export async function renderEvents(container) {
         const published = row.querySelector('.discord-publish').checked;
         const actionButtonText = row.querySelector('.discord-action-text').value.trim();
         const actionButtonUrl = row.querySelector('.discord-action-url').value.trim();
-        if (!published && !actionButtonText && !actionButtonUrl) {
+        const eventButtonText = row.querySelector('.discord-event-text').value.trim();
+        const eventButtonUrl = row.querySelector('.discord-event-url').value.trim();
+        if (!published && !actionButtonText && !actionButtonUrl && !eventButtonText && !eventButtonUrl) {
           delete workingOverlays[eventId];
         } else {
-          workingOverlays[eventId] = { published, actionButtonText, actionButtonUrl };
+          workingOverlays[eventId] = { published, actionButtonText, actionButtonUrl, eventButtonText, eventButtonUrl };
         }
       };
       row.querySelector('.discord-publish').addEventListener('change', sync);
       row.querySelector('.discord-action-text').addEventListener('input', sync);
       row.querySelector('.discord-action-url').addEventListener('input', sync);
+      row.querySelector('.discord-event-text').addEventListener('input', sync);
+      row.querySelector('.discord-event-url').addEventListener('input', sync);
     });
 
     saveBtn.addEventListener('click', async () => {
@@ -258,13 +268,22 @@ export async function renderEvents(container) {
         const previous = discordData.overlays || {};
         const updates = {};
         let changed = 0;
+        const missingUrl = all.filter(ev => {
+          const o = workingOverlays[ev.id];
+          return o && o.eventButtonText && !o.eventButtonUrl;
+        });
+        if (missingUrl.length) {
+          throw new Error(`RSVP button needs a link: ${missingUrl.map(ev => ev.title).join(', ')}`);
+        }
         for (const ev of all) {
           const prev = previous[ev.id] || {};
           const next = workingOverlays[ev.id] || {};
           if (
             (prev.published || false) !== (next.published || false) ||
             (prev.actionButtonText || null) !== (next.actionButtonText || null) ||
-            (prev.actionButtonUrl || null) !== (next.actionButtonUrl || null)
+            (prev.actionButtonUrl || null) !== (next.actionButtonUrl || null) ||
+            (prev.eventButtonText || null) !== (next.eventButtonText || null) ||
+            (prev.eventButtonUrl || null) !== (next.eventButtonUrl || null)
           ) {
             updates[ev.id] = next;
             changed++;

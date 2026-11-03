@@ -93,6 +93,8 @@ export async function handlePublicContent(request, env) {
         discordUrl: ev.discordUrl,
         actionButtonText: overlay.actionButtonText || null,
         actionButtonUrl: overlay.actionButtonUrl || null,
+        eventButtonText: overlay.eventButtonUrl ? (overlay.eventButtonText || 'RSVP') : null,
+        eventButtonUrl: overlay.eventButtonUrl || null,
       };
     });
 

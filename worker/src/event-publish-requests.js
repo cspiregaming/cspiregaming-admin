@@ -106,6 +106,8 @@ export async function applyDecision(env, id, status, decidedBy) {
         published: true,
         actionButtonText: existing.actionButtonText || null,
         actionButtonUrl: existing.actionButtonUrl || null,
+        eventButtonText: existing.eventButtonText || null,
+        eventButtonUrl: existing.eventButtonUrl || null,
       });
     }
   }
