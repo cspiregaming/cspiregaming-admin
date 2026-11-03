@@ -37,7 +37,10 @@ register-discord-commands:
   #                     the worker runtime reads it as a wrangler secret — this job runs in its
   #                     own container and gets the token from CI vars, not from Cloudflare.
 
-# Deploy Admin page to GitLab Pages (served at cspiregaming.csgitpages.cspire.net)
+# Legacy mirror of the admin SPA to GitLab Pages. Canonical deploy is GitHub Pages
+# via .github/workflows/deploy-pages.yml, publishing to the URL the worker actually
+# redirects to post-login (ADMIN_URL in worker/wrangler.toml):
+# https://cspiregaming.github.io/cspiregaming-admin (aliased at https://cspiregaming.com/cspiregaming-admin/)
 pages:
   stage: deploy
   script:
@@ -48,5 +51,5 @@ pages:
   only:
     - main
   environment:
-    name: admin-page
+    name: admin-page-gitlab-mirror
     url: https://cspiregaming.csgitpages.cspire.net
