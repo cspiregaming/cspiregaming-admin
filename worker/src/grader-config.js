@@ -136,6 +136,22 @@ export const BOARD_PRESETS = Object.freeze([
     ],
   },
   {
+    id: 'codenames',
+    name: 'Codenames Daily',
+    parserType: 'custom',
+    headerRegex: '^CODENAMES DAILY',
+    // Three clues, each "WORD N ✅✅❌". Primary = wrong guesses (❌, max 3):
+    // 0 → score1 … 3 → score4. Correct (✅) count is extracted for bonus rules.
+    extractors: [
+      { name: 'wrong', kind: 'count', pattern: '❌' },
+      { name: 'correct', kind: 'count', pattern: '✅' },
+    ],
+    scoring: { field: 'wrong', offset: 1, cap: 6 },
+    samples: [
+      { label: '2 wrong, 5 right', content: 'CODENAMES DAILY\n2.11.2026\nGLADIATOR 2 ✅✅\nCOMA 4 ✅✅❌\nDEADLY 3 ✅❌\nCan you beat this?\nhttps://codenames.game/daily/en' },
+    ],
+  },
+  {
     id: '4x3',
     name: '4x3.fun',
     parserType: 'custom',
